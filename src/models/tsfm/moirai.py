@@ -81,3 +81,60 @@ class MoiraiModel(TSFMBase):
                 med = samples.float().median(dim=1).values
                 all_blocks.append(med.cpu().numpy())
         return np.concatenate(all_blocks, axis=0)
+
+    def _forecast_batch_with_covariates(
+        self,
+        contexts: np.ndarray,
+        past_cov: np.ndarray,
+        future_cov: np.ndarray,
+    ) -> np.ndarray:
+        """contexts: (B, L); past_cov: (B, L, C); future_cov: (B, H, C).
+        Returns (B, HORIZON) median forecast across samples."""
+        self._load()
+        from uni2ts.model.moirai import MoiraiForecast
+
+        L = contexts.shape[1]
+        C = past_cov.shape[2]
+        forecaster = MoiraiForecast(
+            module=self._module,
+            prediction_length=HORIZON,
+            context_length=L,
+            patch_size=self.patch_size,
+            num_samples=self.num_samples,
+            target_dim=1,
+            feat_dynamic_real_dim=C,
+            past_feat_dynamic_real_dim=C,
+        ).to(self._device).eval()
+
+        past_target = torch.tensor(
+            contexts[..., None], dtype=torch.float32, device=self._device
+        )
+        past_observed = torch.ones_like(past_target, dtype=torch.bool)
+        past_is_pad = torch.zeros(
+            past_target.shape[:2], dtype=torch.bool, device=self._device,
+        )
+        past_feat = torch.tensor(past_cov, dtype=torch.float32, device=self._device)
+        past_feat_observed = torch.ones_like(past_feat, dtype=torch.bool)
+        future_feat = torch.tensor(future_cov, dtype=torch.float32, device=self._device)
+        # feat_dynamic_real spans context+horizon concatenated.
+        feat = torch.cat([past_feat, future_feat], dim=1)
+        feat_observed = torch.ones_like(feat, dtype=torch.bool)
+
+        all_blocks: list[np.ndarray] = []
+        bs = self.batch_size
+        with torch.no_grad():
+            for i in range(0, past_target.shape[0], bs):
+                samples = forecaster(
+                    past_target=past_target[i : i + bs],
+                    past_observed_target=past_observed[i : i + bs],
+                    past_is_pad=past_is_pad[i : i + bs],
+                    past_feat_dynamic_real=past_feat[i : i + bs],
+                    past_observed_feat_dynamic_real=past_feat_observed[i : i + bs],
+                    feat_dynamic_real=feat[i : i + bs],
+                    observed_feat_dynamic_real=feat_observed[i : i + bs],
+                )
+                if samples.dim() == 4:
+                    samples = samples.squeeze(-1)
+                med = samples.float().median(dim=1).values
+                all_blocks.append(med.cpu().numpy())
+        return np.concatenate(all_blocks, axis=0)
