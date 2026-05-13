@@ -22,9 +22,19 @@ Deliver a defensible, reproducible benchmark in line with the capstone proposal:
 - No fine-tuning of TSFMs (zero-shot only, per proposal §4.3).
 - Reproducibility: every prediction artifact tied to a checkpoint SHA, env hash, and seed.
 
-**Out of scope of this design** (handled in follow-on implementation plans):
+**In scope of this design:**
+- LightGBM refactor (already implemented; moved into the package).
+- MSTL+ETS, SARIMAX classical baselines per proposal §4.1.
+- PatchTST per proposal §4.2.
+- All four TSFMs per proposal §4.3.
+- Ablations A, B, C per proposal §6.
+- DM tests, block-bootstrap CIs, post-hoc residual correction, deeper analysis per §7 below.
+- Polish to the existing data pipeline and LightGBM notebook.
+
+**Out of scope of this design:**
 - Writing the final paper / report prose.
-- Implementing MSTL+ETS, SARIMAX, and PatchTST. The harness must accommodate them; their implementation is a separate ticket.
+- Conformal prediction intervals.
+- Cross-grid generalization experiments.
 
 ---
 
@@ -45,12 +55,12 @@ src/
   models/
     base.py                      # Model protocol
     classical/
-      mstl_ets.py                # placeholder file with NotImplementedError stub
-      sarimax.py                 # placeholder stub
+      mstl_ets.py                # MSTL decomposition + ETS w/ Ramadan-aware seasonal
+      sarimax.py                 # SARIMAX with exogenous + auto-order selection
     ml/
       lgbm.py                    # wraps existing LightGBM + Optuna
     dl/
-      patchtst.py                # placeholder stub
+      patchtst.py                # channel-independent PatchTST via neuralforecast
     tsfm/
       _adapter.py                # context windowing, bf16, batched generation
       chronos_bolt.py
@@ -79,8 +89,8 @@ data/
 notebooks/
   01_eda.ipynb                   # existing eda_final_dataset.ipynb, lightly cleaned
   02_lgbm.ipynb                  # thin runner using src/models/ml/lgbm.py
-  03_classical.ipynb             # placeholder for MSTL+ETS, SARIMAX
-  04_patchtst.ipynb              # placeholder for PatchTST
+  03_classical.ipynb             # thin runners for MSTL+ETS and SARIMAX
+  04_patchtst.ipynb              # thin runner for PatchTST
   05_tsfm.ipynb                  # all 4 TSFMs zero-shot
   06_ablations.ipynb             # A, B, C tables + DM tests + deeper analysis
   07_report_artifacts.ipynb      # final figures and tables for the report
@@ -244,11 +254,51 @@ Shared `_adapter.py`:
 
 **Critical rule:** TSFM context windows contain only raw `y` and proposal-specified dynamic covariates. No tabular engineered features (rolling means, sin/cos, etc.). Adding them is not zero-shot evaluation and would compromise contribution C1.
 
-### 5.3 Classical and PatchTST (placeholder stubs)
-`mstl_ets.py`, `sarimax.py`, `patchtst.py` get `NotImplementedError` stubs implementing the `Model` protocol's signature. The protocol must be wide enough to fit them when their implementation tickets land. Specifically:
-- MSTL+ETS will call `fit` per Ramadan window for re-estimated daily seasonal; `predict` is a rolling-origin daily refit.
-- SARIMAX will call `fit` weekly with exogenous regressors.
-- PatchTST will call `fit` once with train+val; `predict` is single-pass over test.
+### 5.3 MSTL+ETS (`src/models/classical/mstl_ets.py`)
+
+Per proposal §4.1. Library: `statsmodels.tsa.seasonal.MSTL` for decomposition + `statsmodels.tsa.holtwinters.ExponentialSmoothing` (ETS(A,N,N)) on the residual.
+
+- **Periods:** (24, 168, 8766). The yearly period (8766h ≈ 365.25 days) requires sufficient history; train on the full 2018–2022 window.
+- **Forecast process** for issuance time `t`:
+  1. Decompose `y[0..t]` via MSTL → trend + seasonal_24 + seasonal_168 + seasonal_8766 + residual.
+  2. ETS(A,N,N) fit on residual; forecast 24 steps ahead.
+  3. Project the trend (last value, no drift since ETS(A,N,N)) and the three seasonals (use the periodic cycle).
+  4. Sum back to get `y_pred[t+24]`.
+- **Two variants:**
+  - `nohijri`: standard MSTL on the full history.
+  - `hijri`: when issuance time `t` falls within a Ramadan window, re-estimate the daily seasonal component using only Ramadan-historical hours (concatenated across years). Trend and weekly seasonals use full history. Implementation: a `RamadanAwareMSTL` wrapper that conditionally swaps the daily seasonal block before the trend re-add.
+- **Refit cadence:** one decomposition per test day (24 issuance times share the same daily MSTL fit; only ETS residual short-forecast differs per hour). ~450 daily fits × ~5 s each ≈ 40 min per variant on CPU.
+- **Stateless within a day:** the `Model.predict` method internally caches the per-day decomposition to avoid redundant work.
+
+### 5.4 SARIMAX (`src/models/classical/sarimax.py`)
+
+Per proposal §4.1. Library: `statsmodels.tsa.statespace.SARIMAX` for the model; `pmdarima.auto_arima` for order selection.
+
+- **Specification:** `SARIMA(p,d,q)(P,D,Q,24)` with exogenous regressors.
+- **Order selection:** run once on the training split (2018–2022). To make `auto_arima` tractable, downsample training data to weekly granularity for order search (stepwise AICc), then refit chosen order at hourly granularity. Save chosen order in `data/optuna/sarimax_order.json` so it's reused across variants.
+- **Exogenous variants:**
+  - `nohijri`: weather only (`temp_c`, `dewpoint_c`, `wind_speed`, `solar_rad`, `temp_sq`, `temp_above_35`).
+  - `hijri`: weather + Hijri block.
+  - `hijri_plusB`: weather + Hijri + `ramadan_x_heatwave`, `ramadan_x_temp_above_35`.
+- **Refit cadence:** weekly. Each Monday in the test split, refit the SARIMAX state-space model with all data up to that point. Inside each week, use the fitted model for 24h-ahead forecasts at each hour (no refit). ~65 weekly refits across the test span; each refit ~3–8 min on CPU → ~5–8h per variant.
+- **Deterministic:** single seed; no Optuna.
+
+### 5.5 PatchTST (`src/models/dl/patchtst.py`)
+
+Per proposal §4.2. Library: `neuralforecast.models.PatchTST` from Nixtla. Chosen over a hand-rolled PyTorch implementation because the Nixtla module already implements channel-independent PatchTST with the exact patch/stride/head config the proposal specifies, and integrates with `mlflow` for run tracking.
+
+- **Architecture:** patch P=16, stride S=8, 3 encoder layers, 4 attention heads, hidden size d=128. Dropout 0.1.
+- **Input channels:** multivariate `[y, temp_c, dewpoint_c, wind_speed, solar_rad, is_ramadan, day_of_ramadan, is_eid]`. Channel-independent: each channel processed independently by the same transformer weights. Forecast extracted from the `y` channel.
+- **Context length:** 336 (2 weeks) for the headline run. Not part of ablation C (TSFM-only); single L for PatchTST.
+- **Training:** AdamW, lr=1e-4, cosine schedule with 500 warmup steps, batch size 32, max 100 epochs, early stopping on val MAE (patience 10).
+- **Splits:** train 2018–2022, val 2023, test 2024-01-01..2025-03-31. Strict chronological — `neuralforecast.NeuralForecast.fit` is configured with `val_size = len(val)`.
+- **Variants:**
+  - `nohijri`: drop `is_ramadan`, `day_of_ramadan`, `is_eid` from input channels.
+  - `hijri`: all channels.
+  - `hijri_plusB`: all channels + `ramadan_x_heatwave`, `ramadan_x_temp_above_35`.
+- **Seeds:** 5 seeds (42–46), median-seed reporting per multi-seed protocol §7.8.
+- **Output:** `predict()` returns the 24-step block; row at `τ` keeps the 24th entry as `y_pred[τ]` and the full block as `y_block`.
+- **Runtime:** ~30 min/run on 4070 mobile, ~5–10 min/run on A100. Total 15 runs ≈ 7.5h local / ~1.5–2.5h A100.
 
 ---
 
@@ -260,16 +310,22 @@ Shared `_adapter.py`:
 | B: Heatwave × Ramadan interaction | LGBM, PatchTST, SARIMAX, TimesFM, Moirai | `hijri_plusB` adds `ramadan_x_heatwave`, `ramadan_x_temp_above_35` |
 | C: Context-length sensitivity | 4 TSFMs | `L ∈ {96, 168, 336, 720}` |
 
-**Run counts (in-scope for this design):**
-- LGBM: 3 variants × 5 seeds = 15 runs (~5 min each, ~1.25h total).
-- TSFMs: Chronos+Time-MoE 8 passes (4 L × 2 models, ablation A via post-hoc); TimesFM+Moirai 16 passes (4 L × 2 hijri-variants × 2 models). Total 24 zero-shot inference passes.
+**Run counts (all in-scope):**
 
-**Run counts (out-of-scope models the harness must accommodate, listed for budgeting only):**
-- PatchTST: 3 variants × 5 seeds = 15 training runs (~30 min each on 4070 mobile, ~1h each on A100 → 7.5h local / ~1h A100).
-- SARIMAX: 3 variants × 1 seed (deterministic) ≈ 9h CPU.
-- MSTL+ETS: 2 variants × 1 seed (fast).
+| Model | Variants | Seeds | Runs | Per-run | Total wall-clock |
+|---|---|---|---|---|---|
+| MSTL+ETS | 2 (nohijri, hijri) | 1 | 2 | ~40 min CPU | ~1.5h CPU |
+| SARIMAX | 3 (nohijri, hijri, hijri_plusB) | 1 | 3 | ~6h CPU | ~18h CPU |
+| LGBM | 3 (nohijri, hijri, hijri_plusB) | 5 | 15 | ~5 min | ~1.25h |
+| PatchTST | 3 (nohijri, hijri, hijri_plusB) | 5 | 15 | ~30 min local / ~7 min A100 | ~7.5h local / ~1.75h A100 |
+| Chronos-Bolt | 1 (univariate; Hijri via post-hoc) | 1 | 4 (L sweep) | ~50 min local / ~5 min A100 | ~3.5h local / ~20 min A100 |
+| TimesFM 2.0 | 2 (nohijri, hijri) | 1 | 8 (4 L × 2 variants) | ~100 min local / ~10 min A100 | ~13h local / ~1.5h A100 |
+| Moirai-1.1 | 2 (nohijri, hijri) | 1 | 8 (4 L × 2 variants) | ~150 min local / ~15 min A100 | ~20h local / ~2h A100 |
+| Time-MoE | 1 (univariate; Hijri via post-hoc) | 1 | 4 (L sweep) | ~60 min local / ~20 min A100 (Large) | ~4h local / ~1.5h A100 |
 
-These three models get `Model`-protocol stubs in this design (§5.3) but their full implementations and run executions live in follow-on tickets.
+**Totals across all 9 models:**
+- Local-only path: ~70h total. CPU work (SARIMAX, MSTL+ETS) runs in parallel with GPU work (TSFMs, PatchTST). Realistic calendar time: ~5–7 days of overnight runs.
+- A100 path (GPU work on rented A100, CPU work local): ~7–8h A100 + ~20h local CPU running in parallel. Realistic calendar time: 2 days.
 
 **Runtime envelopes:**
 - 4070 mobile fallback: 24–36h GPU for TSFM passes, run overnight × 2.
@@ -311,7 +367,7 @@ For block-forecasters (PatchTST, all 4 TSFMs):
 - Compute MAE at `h ∈ {1, 4, 8, 12, 16, 20, 24}` per regime per model.
 - Plot F3: MAE vs horizon, faceted by regime, one line per model.
 
-Single-point models (LGBM, SARIMAX, MSTL+ETS) do not get a horizon ladder in this design. F3 is computed only for block-forecasters. A separate follow-on ticket may add `h ∈ {1, 12, 24}` LGBM models if the report needs full-horizon comparison parity.
+Single-point models (LGBM, SARIMAX) do not get a horizon ladder in this design. MSTL+ETS naturally produces a 24-step block (state-space forecast); we keep the block for F3. F3 is therefore computed for all block-forecasters: MSTL+ETS, PatchTST, all 4 TSFMs. LGBM and SARIMAX appear only at the t+24 point in F3.
 
 ### 7.5 Error-vs-temperature curve (deeper analysis)
 Per model, bin test errors by `temp_c` (5°C bins, 0–45°C). Plot F4: mean `|error|` vs bin midpoint with bootstrap CIs. Tests the hypothesis that TSFMs degrade superlinearly above 35°C and that ablation B closes the gap on covariate-capable models.
@@ -397,27 +453,30 @@ Generated by `notebooks/07_report_artifacts.ipynb` from `data/predictions/`.
 
 ## 11. Build Sequence
 
-Suggested execution order. Steps 1–2 are blocking; everything below can be reordered around hardware availability.
+Suggested execution order. Steps 1–3 are blocking; everything below can be reordered around hardware availability. CPU-bound work (steps 5, 6) runs in parallel with GPU-bound work (steps 7, 8) once the harness is in place.
 
 1. **Polish foundation** — fix `preprocess_epias.py`, build `src/features/{hijri,regimes,calendar,weather_nonlinear}.py`. Regenerate `final_training_set_v2.csv` with meta sidecar. Assert test-window data coverage (no NaN `actual_load` rows in 2024-01-01 .. 2025-03-31; document and truncate if source ends earlier). Blocks everything downstream.
 2. **Evaluation harness** — `src/evaluation/{metrics,regime_eval,dm_test,bootstrap}.py`. Unit tests on synthetic series. Blocks all model evaluation.
 3. **Refactor LGBM** — move into `src/models/ml/lgbm.py`. Rerun on v2 data, all 5 seeds × 3 variants. First end-to-end working slice; validates the harness against known-good numbers.
-4. **TSFM adapters** — `_adapter.py` skeleton, then in order: Chronos-Bolt (smallest API surface), TimesFM 2.0, Moirai-1.1, Time-MoE. Each model: zero-shot on test, predictions to parquet, sanity-check vs LGBM on Normal regime. Heavy step; ideal target for A100 session.
-5. **Post-hoc residual correction** — `src/evaluation/residual_correction.py`. Train residual heads for Chronos + Time-MoE on train-split residuals.
-6. **Ablations A, B, C orchestration** — `scripts/run_all.py`. Ablation C TSFM context-length sweep is the longest run. A100 path: single overnight session. Local path: two overnight sessions.
-7. **Statistical analysis** — DM tests + Holm-Bonferroni + block bootstrap.
-8. **Deeper analysis** — per-horizon decomp, error-vs-temperature, hour-of-day signed error.
-9. **Report artifacts** — `07_report_artifacts.ipynb` generates all T1–T6 and F1–F7 from the predictions parquet store.
+4. **MSTL+ETS** — implement `src/models/classical/mstl_ets.py` including the `RamadanAwareMSTL` wrapper. Run 2 variants. CPU-only; can run on local laptop or any cloud CPU box. ~1.5h.
+5. **SARIMAX** — implement `src/models/classical/sarimax.py`. Run `auto_arima` order selection once. Run 3 variants. Long-running CPU job; kick off in a separate terminal to run in background while GPU work proceeds. ~18h.
+6. **TSFM adapters** — `_adapter.py` skeleton, then in order: Chronos-Bolt (smallest API surface), TimesFM 2.0, Moirai-1.1, Time-MoE. Each model: zero-shot on test, predictions to parquet, sanity-check vs LGBM on Normal regime. Heavy GPU step; ideal target for A100 session.
+7. **PatchTST** — implement `src/models/dl/patchtst.py` using `neuralforecast`. Run 3 variants × 5 seeds = 15 training runs. Same A100 session as step 6 for efficiency, or separate.
+8. **Post-hoc residual correction** — `src/evaluation/residual_correction.py`. Train residual heads for Chronos + Time-MoE on train-split residuals. CPU work after the TSFM train-split runs.
+9. **Ablations A, B, C orchestration** — `scripts/run_all.py` ties everything together. Ablation C TSFM context-length sweep is the longest single run.
+10. **Statistical analysis** — DM tests + Holm-Bonferroni + block bootstrap.
+11. **Deeper analysis** — per-horizon decomp, error-vs-temperature, hour-of-day signed error.
+12. **Report artifacts** — `07_report_artifacts.ipynb` generates all T1–T6 and F1–F7 from the predictions parquet store.
 
-Step 4 should start as early as possible because it gates the GPU-bound work. Steps 6–9 are pure orchestration and analysis from the artifact store.
+Steps 6 and 7 should start as early as possible because they gate the GPU-bound work. Steps 9–12 are pure orchestration and analysis from the artifact store. Steps 4 and 5 (classical baselines, CPU-bound) can run on the local machine while the GPU work runs on A100, fully overlapping.
 
 ---
 
 ## 12. Non-Goals (this design)
-- MSTL+ETS, SARIMAX, PatchTST implementation. Stubs + protocol fit; full implementations are separate tickets.
 - Writing the final paper prose.
 - Conformal prediction intervals (interesting but not in proposal scope).
 - Cross-grid generalization experiments (proposal is single-grid; out of scope).
+- Hyperparameter search for SARIMAX, MSTL+ETS, PatchTST beyond what the proposal specifies. Their hyperparameters are fixed per proposal §4.1–4.2; only LGBM gets Optuna search per proposal §4.2.
 
 ---
 
@@ -427,3 +486,6 @@ Step 4 should start as early as possible because it gates the GPU-bound work. St
 - **Time-MoE-Large on A100.** The "Large" sparse variant has ~6.9B parameters total (~2.4B active). On a 40GB A100 in bf16 it fits with batch 32–64; on 80GB SXM it fits comfortably. RunPod default is 80GB.
 - **Tail of test set (2025-03 partial month).** Ramadan 2025 runs March 1–30 in Turkey; the test split ending 2025-03-31 should cover it fully. But the source CSV `electricity_consumption_2018_2025.csv` may not extend to 2025-03-31. Step 1 of the build sequence must `head/tail` the source data and assert the test window has zero NaNs in `actual_load` before any model runs. If actual data ends earlier, truncate the test split to match and document the deviation in the LGBM technical report.
 - **`hijridate` ambiguity at month boundaries.** Hijri days start at maghrib (sunset), not midnight. The current code uses Gregorian-day → Hijri-day. Boundary hours can be miscategorized by up to ~6h. Acceptable per proposal but worth documenting in the spec footnote.
+- **MSTL Ramadan-only seasonal re-estimation.** `statsmodels.tsa.seasonal.MSTL` does not natively support conditional seasonal re-estimation. The `RamadanAwareMSTL` wrapper must reimplement the daily-seasonal extraction step (LOESS smoothing over Ramadan-only hours) and splice it back into the standard MSTL output. Validate against the original MSTL on non-Ramadan windows to confirm no drift.
+- **`auto_arima` runtime on hourly data.** Running stepwise AICc search on 5 years × 8760h ≈ 44k observations is prohibitive. We will downsample to weekly mean for order selection, then refit the chosen order on hourly data. Risk: weekly-mean order may not be optimal for hourly dynamics. Mitigation: manual sanity-check of residual ACF on hourly fit.
+- **`neuralforecast` channel-independent PatchTST default.** Confirm via library docs that the `channel_independent=True` flag (or equivalent) is wired up to the proposal's specification. Some `neuralforecast` versions use channel mixing by default. Pin a version known to support the channel-independent setting.
