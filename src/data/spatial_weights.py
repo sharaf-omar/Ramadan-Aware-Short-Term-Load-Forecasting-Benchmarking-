@@ -179,6 +179,60 @@ def get_weighted_weather(variable: str, years=YEARS) -> pd.Series:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Hot southern cities — used for heatwave regime detection.
+# Unweighted mean across these 7 captures AC-load-relevant heat stress;
+# absolute 35°C threshold fires several times per summer here, unlike the
+# pop-weighted national average which is dampened by cooler northern cities.
+SOUTHERN_HEAT_CITIES = [
+    "Adana", "Şanlıurfa", "Gaziantep", "Diyarbakır",
+    "Mersin", "Konya", "Antalya",
+]
+
+
+def build_southern_temp_series(years=YEARS) -> pd.Series:
+    """Unweighted-mean t2m series across SOUTHERN_HEAT_CITIES, in °C.
+
+    Returns
+    -------
+    Hourly UTC-indexed Series named 'temp_c_south'.
+    """
+    missing = [c for c in SOUTHERN_HEAT_CITIES if c not in CITIES]
+    if missing:
+        raise KeyError(f"SOUTHERN_HEAT_CITIES missing from CITIES dict: {missing}")
+
+    yearly: list[pd.Series] = []
+    for year in years:
+        fpath = RAW_DIR / f"t2m_{year}.nc"
+        if not fpath.exists():
+            print(f"  [WARN] t2m {year} not found - skipping")
+            continue
+        print(f"  t2m_south {year} ...", end=" ", flush=True)
+        ds = xr.open_dataset(fpath)
+        per_city = []
+        for city_name in SOUTHERN_HEAT_CITIES:
+            city = CITIES[city_name]
+            pt = (
+                ds["t2m"]
+                .sel(latitude=city["lat"], longitude=city["lon"], method="nearest")
+                .to_series()
+            )
+            per_city.append(pt)
+        mean_kelvin = sum(per_city) / len(per_city)
+        yearly.append(mean_kelvin)
+        ds.close()
+        print("done")
+
+    series = pd.concat(yearly) - 273.15  # K -> °C
+    if series.index.tz is None:
+        series.index = series.index.tz_localize("UTC")
+    else:
+        series.index = series.index.tz_convert("UTC")
+    series = series.sort_index().reindex(FULL_INDEX)
+    series.name = "temp_c_south"
+    return series
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 def build_weather_proxy(years=YEARS) -> pd.DataFrame:
     """
     Process all five ERA5 variables and return a clean weather DataFrame.
