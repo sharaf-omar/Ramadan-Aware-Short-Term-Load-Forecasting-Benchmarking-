@@ -1,23 +1,12 @@
-"""Time-MoE 200M zero-shot wrapper — DEFERRED to Plan 3.
+"""Time-MoE 200M zero-shot wrapper.
 
 Model: Maple728/TimeMoE-200M (Mixture-of-Experts decoder).
-8GB VRAM forces 200M instead of "Large" from the proposal; documented in spec.
-Channel-independent; no dynamic covariates inline.
-
-Plan 2 status: NOT RUN. The model's bundled `ts_generation_mixin.py` and
-`modeling_time_moe.py` (downloaded via trust_remote_code) use a pre-4.46
-transformers Cache API that is incompatible with our pinned transformers
-4.48.3 (which we need for chronos-forecasting 1.5.2). Patching one issue
-exposes a deeper incompatibility in `prepare_inputs_for_generation`.
-
-Plan 3 will revisit by either:
-- Implementing manual autoregressive forward (skip transformers `generate`)
-- Switching to an A100 stack where we can pin transformers ~4.40 + a Chronos
-  version compatible with that range
-- Using the Time-MoE-50M variant if it's been re-released with newer code
-
-The wrapper class below is preserved as a placeholder; calling _load() will
-raise NotImplementedError to make the deferral explicit.
+Time-MoE has prediction heads for horizons [1, 8, 32, 64]. Plan 3 uses the
+32-step head (smallest >= our HORIZON=24) in a single forward call, sliced to
+24 steps. This avoids both:
+  - the bundled generate() (broken on transformers 4.48.3 Cache API), and
+  - a 24-step autoregressive loop (would take ~16h on RTX 4070 for the full
+    test set).
 """
 from __future__ import annotations
 
@@ -43,18 +32,24 @@ class TimeMoEModel(TSFMBase):
         self._dtype = None
 
     def _load(self) -> None:
-        raise NotImplementedError(
-            "Time-MoE-200M zero-shot inference is deferred to Plan 3. "
-            "The model's bundled remote code is incompatible with the "
-            "transformers 4.48.3 pin required by chronos-forecasting. "
-            "See module docstring for details and follow-on plan."
-        )
+        if self._model is not None:
+            return
+        from transformers import AutoModelForCausalLM
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        dtype = torch.bfloat16 if device == "cuda" else torch.float32
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self.checkpoint,
+            trust_remote_code=True,
+            torch_dtype=dtype,
+        ).to(device).eval()
+        self._device = device
+        self._dtype = dtype
 
     def _forecast_batch(self, contexts: np.ndarray) -> np.ndarray:
         """contexts: (B, L). Returns (B, HORIZON) point forecast.
 
-        Time-MoE per-series normalization (subtract mean, divide by std) before
-        generation, then denormalize the forecast.
+        Uses the 32-step prediction head (lm_heads[2]) in a single forward call
+        per batch, then slices to the first HORIZON=24 steps.
         """
         self._load()
         all_blocks: list[np.ndarray] = []
@@ -64,15 +59,16 @@ class TimeMoEModel(TSFMBase):
                 batch = torch.tensor(
                     contexts[i : i + bs], dtype=torch.float32, device=self._device
                 )
+                # Per-series normalize over context.
                 mean = batch.mean(dim=1, keepdim=True)
                 std = batch.std(dim=1, keepdim=True).clamp(min=1e-8)
-                batch_norm = ((batch - mean) / std).to(self._dtype)
-                # generate returns (B, L + HORIZON). Take the tail HORIZON.
-                preds = self._model.generate(
-                    inputs=batch_norm,
-                    max_new_tokens=HORIZON,
-                )
-                tail = preds[:, -HORIZON:].float()
-                denorm = tail * std + mean
+                seq = ((batch - mean) / std).to(self._dtype)  # (B, L)
+                # max_horizon_length=32 -> picks the 32-step head and returns
+                # logits shape (B, L, 32). We take the last position.
+                out = self._model(input_ids=seq, max_horizon_length=32)
+                logits = out.logits  # (B, L, 32)
+                last_pos = logits[:, -1, :]  # (B, 32)
+                block_norm = last_pos[:, :HORIZON].float()  # (B, HORIZON)
+                denorm = block_norm * std + mean
                 all_blocks.append(denorm.cpu().numpy())
         return np.concatenate(all_blocks, axis=0)
