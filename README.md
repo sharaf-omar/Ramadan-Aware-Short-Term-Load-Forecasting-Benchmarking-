@@ -8,7 +8,7 @@ extreme-heat regimes.
 ## Status (current milestone)
 
 - [x] Plan 1: Foundation + evaluation harness + LightGBM refactor
-- [ ] Plan 2: TSFM zero-shot evaluation (Chronos, TimesFM, Moirai, Time-MoE)
+- [x] Plan 2: TSFM zero-shot baseline (Chronos, TimesFM, Moirai at L=336; Time-MoE deferred)
 - [ ] Plan 3: Classical baselines (MSTL+ETS, SARIMAX)
 - [ ] Plan 4: PatchTST
 - [ ] Plan 5: Post-hoc residual correction + ablation orchestration
