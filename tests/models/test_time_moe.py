@@ -11,8 +11,14 @@ def test_timemoe_model_attributes():
     assert m.supports_dynamic_covariates is False  # channel-independent
 
 
-def test_timemoe_load_raises_not_implemented():
-    """Plan 2 defers Time-MoE; _load() raises until Plan 3 fixes the transformers compat."""
+def test_timemoe_forecast_batch_shape_smoke():
+    import torch
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available")
+
     m = TimeMoEModel()
-    with pytest.raises(NotImplementedError):
-        m._load()
+    rng = np.random.default_rng(0)
+    contexts = rng.normal(size=(4, 336)).astype(np.float32)
+    out = m._forecast_batch(contexts)
+    assert out.shape == (4, 24)
+    assert np.isfinite(out).all()
