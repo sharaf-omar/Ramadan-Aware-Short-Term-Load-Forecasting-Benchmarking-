@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ramadan-stlf"
+version = "0.1.0"
+description = "Ramadan-Aware Short-Term Load Forecasting Benchmark"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --strict-markers"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
