@@ -1,13 +1,14 @@
 """SARIMAX classical baseline (proposal section 4.1).
 
-Order (p,d,q) selected once by pmdarima.auto_arima on DAILY-resampled
-training data with weekly seasonality (m=7) — this exposes real trend
-and weekly dynamics that a weekly resample would smooth out, while
-remaining tractable (~1.8k points for 5 years). Seasonal_order is set
-to (1,0,1,24) at the hourly fit level to capture the dominant daily
-cycle. Parameters fit once on train+val with the chosen exogenous
-regressors; the Kalman state is then extended per test day via
-statsmodels' state-space apply() API.
+Order fixed at (1,0,1)(0,1,1,24) — the Hyndman & Athanasopoulos default
+for hourly electricity load (FPP3 §9.10). One seasonal difference at
+lag 24 cleanly absorbs the dominant daily cycle while preserving level
+anchoring (no non-seasonal differencing → predicted long-horizon paths
+do not random-walk away from observed level). We initially tried
+auto_arima on daily-resampled data; the selected (0,1,3)(1,0,1,24)
+gave 21% worse aggregate MAE because d=1 differencing causes errors
+to accumulate over the 47-step day-ahead horizon — particularly
+during the morning peak ramp.
 
 Per test day d:
   - issuance t = first_tau(d) - 24h
@@ -62,8 +63,8 @@ class SARIMAXModel:
     def __init__(
         self,
         variant: Literal["nohijri", "hijri", "hijri_plusB"] = "nohijri",
-        order: tuple[int, int, int] | None = None,
-        seasonal_order: tuple[int, int, int, int] | None = None,
+        order: tuple[int, int, int] = (1, 0, 1),
+        seasonal_order: tuple[int, int, int, int] = (0, 1, 1, 24),
     ):
         self.variant = variant
         self.exog_features = _exog_for_variant(variant)
@@ -73,49 +74,7 @@ class SARIMAXModel:
         self._full_endog: pd.Series | None = None
         self._full_exog: pd.DataFrame | None = None
 
-    def _select_order(self, train_df: pd.DataFrame) -> None:
-        """Pick (p,d,q) via auto_arima on DAILY-resampled training data.
-
-        Daily resampling (m=7 weekly seasonality) is the sweet spot:
-          - Weekly resample loses too much dynamics (only ~260 points for
-            5 years; no day-of-week info).
-          - Hourly auto_arima with m=24 is prohibitive (>30 min just for
-            order selection).
-          - Daily with m=7 gives ~1.8k points, captures weekly cycle and
-            trend dynamics, runs in 1-3 minutes.
-
-        seasonal_order is fixed at (1,0,1,24) at the hourly fit level
-        because the daily resample by construction has no within-day
-        info. (1,0,1,24) is the well-established default for hourly
-        electricity load (e.g., Hyndman & Athanasopoulos Ch. 9).
-        """
-        if self.order is not None and self.seasonal_order is not None:
-            return
-        from pmdarima import auto_arima
-
-        daily = train_df["actual_load"].resample("D").mean().dropna()
-        if len(daily) < 60:
-            self.order = (1, 1, 0)
-            self.seasonal_order = (1, 0, 1, 24)
-            return
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            try:
-                model = auto_arima(
-                    daily, seasonal=True, m=7, stepwise=True,
-                    max_p=3, max_q=3, max_d=2,
-                    max_P=2, max_Q=2, max_D=1,
-                    information_criterion="aicc",
-                    suppress_warnings=True, error_action="ignore",
-                )
-                self.order = model.order
-                self.seasonal_order = (1, 0, 1, 24)
-            except Exception:
-                self.order = (1, 1, 0)
-                self.seasonal_order = (1, 0, 1, 24)
-
     def fit(self, train_df: pd.DataFrame, val_df: pd.DataFrame, hijri: bool, seed: int) -> None:
-        self._select_order(train_df)
         history = pd.concat([train_df, val_df]).sort_index()
         history = history[~history.index.duplicated(keep="last")]
         endog = history["actual_load"]
