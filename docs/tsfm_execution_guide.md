@@ -239,6 +239,56 @@ These are rough estimates; first-run numbers establish the actual budget. The ha
 
 ---
 
+## PatchTST training (GPU-bound, A100 strongly preferred)
+
+PatchTST is small enough that it can train on either path, but the runtime gap is large.
+
+**A100 path** — same pod as the TSFM session:
+```bash
+python scripts/run_all.py --model patchtst \
+    --variants nohijri hijri hijri_plusB \
+    --seeds 42 43 44 45 46 \
+    --host runpod_a100
+```
+Wall-clock: ~1.5–2.5h for all 15 runs.
+
+**Local 4070 mobile**:
+```powershell
+python scripts/run_all.py --model patchtst `
+    --variants nohijri hijri hijri_plusB `
+    --seeds 42 43 44 45 46 `
+    --host local_4070m
+```
+Wall-clock: ~7.5h. Best run overnight.
+
+---
+
+## Classical baselines (CPU-only, run locally)
+
+MSTL+ETS and SARIMAX are CPU-bound and don't benefit from GPU. Run them locally even when the TSFM session is on RunPod.
+
+**MSTL+ETS:**
+```powershell
+python scripts/run_all.py --model mstl_ets `
+    --variants nohijri hijri `
+    --host local_cpu
+```
+Wall-clock: ~1.5h.
+
+**SARIMAX (long-running, background):**
+```powershell
+# Option 1: foreground with nohup-like behavior on Windows
+Start-Process powershell -ArgumentList "python scripts/run_all.py --model sarimax --variants nohijri hijri hijri_plusB --host local_cpu *> sarimax.log 2>&1" -WindowStyle Hidden
+
+# Option 2: simpler, leave a terminal open overnight
+python scripts/run_all.py --model sarimax `
+    --variants nohijri hijri hijri_plusB `
+    --host local_cpu
+```
+Wall-clock: ~18h. Kick off in parallel with the GPU work — they don't compete for resources.
+
+---
+
 ## Shared: artifact verification
 
 Regardless of path, after all TSFM runs are complete, verify:
