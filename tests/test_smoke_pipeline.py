@@ -30,3 +30,25 @@ def test_lgbm_prediction_exists(variant, seed):
     assert "y_pred" in df.columns
     assert df["y_pred"].notna().all()
     assert len(df) > 5000  # sanity: should be ~10,800 test hours
+
+
+# Plan 2: TSFM zero-shot baseline at L=336 (Time-MoE deferred to Plan 3).
+TSFM_MODELS_L336 = [
+    "chronos_bolt_base",
+    "timesfm_2_5",
+    "moirai_1_1_small",
+]
+
+
+@pytest.mark.parametrize("model_name", TSFM_MODELS_L336)
+def test_tsfm_prediction_exists_L336(model_name):
+    p = PRED_DIR / f"{model_name}__nohijri__L336__seed0.parquet"
+    assert p.exists(), f"Missing {p}. Run scripts/run_tsfm.py --model <short> --context-length 336."
+    df = pd.read_parquet(p)
+    assert "y_true" in df.columns
+    assert "y_pred" in df.columns
+    assert "y_block" in df.columns
+    assert df["y_pred"].notna().all()
+    # Block length must be 24
+    assert all(len(b) == 24 for b in df["y_block"].head(20))
+    assert len(df) > 5000
