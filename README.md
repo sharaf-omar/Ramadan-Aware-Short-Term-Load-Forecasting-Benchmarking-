@@ -9,10 +9,11 @@ extreme-heat regimes.
 
 - [x] Plan 1: Foundation + evaluation harness + LightGBM refactor
 - [x] Plan 2: TSFM zero-shot baseline (Chronos, TimesFM, Moirai at L=336; Time-MoE deferred)
-- [ ] Plan 3: Classical baselines (MSTL+ETS, SARIMAX)
-- [ ] Plan 4: PatchTST
-- [ ] Plan 5: Post-hoc residual correction + ablation orchestration
-- [ ] Plan 6: Statistical analysis + deeper analysis + report artifacts
+- [x] Plan 3: TSFM ablations + L sweep (Time-MoE rescued, L∈{96,168,336,720}, Hijri covariates A)
+- [ ] Plan 4: Classical baselines (MSTL+ETS, SARIMAX)
+- [ ] Plan 5: PatchTST
+- [ ] Plan 6: Post-hoc residual correction + ablation orchestration
+- [ ] Plan 7: Statistical analysis + deeper analysis + report artifacts
 
 See [docs/superpowers/specs/2026-05-13-tsfm-ablations-completion-design.md](docs/superpowers/specs/2026-05-13-tsfm-ablations-completion-design.md)
 for the full design and [docs/superpowers/plans/](docs/superpowers/plans/) for active plans.
