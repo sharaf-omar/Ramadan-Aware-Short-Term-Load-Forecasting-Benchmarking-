@@ -25,18 +25,20 @@ def _fetch_buffer_2017() -> pd.DataFrame:
     """Fetch Dec 2017 buffer needed for early-2018 lag features.
 
     Imported lazily so test collection does not trigger EPTR2 authentication.
+    If credentials are missing or fetch fails, returns an empty DataFrame and
+    lag features for early 2018 rows will be NaN (acceptable: those rows are
+    dropped from train).
     """
-    from eptr2 import EPTR2
-
-    eptr = EPTR2(use_dotenv=True, dotenv_path=str(DOTENV_PATH), recycle_tgt=True)
     try:
+        from eptr2 import EPTR2
+        eptr = EPTR2(use_dotenv=True, dotenv_path=str(DOTENV_PATH), recycle_tgt=True)
         buf = eptr.call(
             "rt-cons", start_date="2017-12-01", end_date="2017-12-31"
         ).rename(columns={"consumption": "actual_load"})
+        return buf
     except Exception as exc:
         print(f"[WARN] Could not fetch 2017 buffer: {exc}. Lags in early 2018 will be NaN.")
-        buf = pd.DataFrame()
-    return buf
+        return pd.DataFrame()
 
 
 def build_lag_rolling_features(y: pd.Series) -> pd.DataFrame:
