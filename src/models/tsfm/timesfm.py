@@ -26,44 +26,48 @@ class TimesFMModel(TSFMBase):
         self.checkpoint = checkpoint
         self.batch_size = batch_size
         self._model = None
+        self._compiled_max_context: int | None = None
 
     def _load(self, max_context: int) -> None:
-        if self._model is not None:
-            return
         from timesfm import TimesFM_2p5_200M_torch, ForecastConfig
 
-        # Monkey-patch: huggingface_hub's ModelHubMixin.from_pretrained passes
-        # `proxies` (and other download-related kwargs) through to __init__,
-        # but TimesFM_2p5_200M_torch.__init__ doesn't accept them. Wrap __init__
-        # to swallow unknown kwargs.
-        original_init = TimesFM_2p5_200M_torch.__init__
-        _hub_kwargs = {"proxies", "force_download", "resume_download", "token",
-                       "cache_dir", "local_files_only", "revision",
-                       "subfolder", "trust_remote_code"}
+        if self._model is None:
+            # Monkey-patch: huggingface_hub's ModelHubMixin.from_pretrained passes
+            # `proxies` (and other download-related kwargs) through to __init__,
+            # but TimesFM_2p5_200M_torch.__init__ doesn't accept them.
+            original_init = TimesFM_2p5_200M_torch.__init__
+            _hub_kwargs = {"proxies", "force_download", "resume_download", "token",
+                           "cache_dir", "local_files_only", "revision",
+                           "subfolder", "trust_remote_code"}
 
-        def _patched_init(self, *args, **kwargs):
-            for k in list(kwargs):
-                if k in _hub_kwargs:
-                    kwargs.pop(k)
-            return original_init(self, *args, **kwargs)
+            def _patched_init(self, *args, **kwargs):
+                for k in list(kwargs):
+                    if k in _hub_kwargs:
+                        kwargs.pop(k)
+                return original_init(self, *args, **kwargs)
 
-        TimesFM_2p5_200M_torch.__init__ = _patched_init
-        try:
-            self._model = TimesFM_2p5_200M_torch.from_pretrained(self.checkpoint)
-        finally:
-            TimesFM_2p5_200M_torch.__init__ = original_init
+            TimesFM_2p5_200M_torch.__init__ = _patched_init
+            try:
+                self._model = TimesFM_2p5_200M_torch.from_pretrained(self.checkpoint)
+            finally:
+                TimesFM_2p5_200M_torch.__init__ = original_init
 
-        self._model.compile(
-            ForecastConfig(
-                max_context=max_context,
-                max_horizon=HORIZON,
-                normalize_inputs=True,
-                use_continuous_quantile_head=False,
-                force_flip_invariance=True,
-                infer_is_positive=True,
-                per_core_batch_size=self.batch_size,
+        # Recompile if context length changed (a single compiled model is
+        # tied to a specific max_context; reusing it with smaller/larger
+        # contexts silently gives wrong/stale outputs).
+        if self._compiled_max_context != max_context:
+            self._model.compile(
+                ForecastConfig(
+                    max_context=max_context,
+                    max_horizon=HORIZON,
+                    normalize_inputs=True,
+                    use_continuous_quantile_head=False,
+                    force_flip_invariance=True,
+                    infer_is_positive=True,
+                    per_core_batch_size=self.batch_size,
+                )
             )
-        )
+            self._compiled_max_context = max_context
 
     def _forecast_batch(self, contexts: np.ndarray) -> np.ndarray:
         """contexts: (B, L). Returns (B, HORIZON) point forecast."""
