@@ -106,3 +106,83 @@ class TSFMBase(abc.ABC):
             "regime": test_df["regime"].values[valid_mask],
         }, index=test_df.index[valid_mask])
         return out
+
+    def _forecast_batch_with_covariates(
+        self,
+        contexts: np.ndarray,
+        past_cov: np.ndarray,
+        future_cov: np.ndarray,
+    ) -> np.ndarray:
+        """Override in subclasses that support dynamic real covariates.
+
+        contexts:    (B, L)        target series context
+        past_cov:    (B, L, C)     covariates aligned with context window
+        future_cov:  (B, HORIZON, C) covariates aligned with horizon
+
+        Returns (B, HORIZON) point forecast.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support dynamic covariates."
+        )
+
+    def predict_with_covariates(
+        self,
+        test_df: pd.DataFrame,
+        context_length: int,
+        covariate_cols: list[str],
+    ) -> pd.DataFrame:
+        """Like predict(), but feeds dynamic real covariates over context + horizon.
+
+        covariate_cols must be columns of test_df aligned to the test_df index.
+        """
+        if not self.supports_dynamic_covariates:
+            raise ValueError(
+                f"{self.name} does not support dynamic covariates "
+                "(supports_dynamic_covariates=False)."
+            )
+
+        contexts = build_context_windows(
+            test_df["actual_load"], test_df.index, context_length=context_length,
+        )
+        valid_mask = ~np.isnan(contexts).any(axis=1)
+
+        # Also drop rows where there isn't enough future window for covariates.
+        positions = np.arange(len(test_df))
+        future_ok = positions + HORIZON <= len(test_df)
+        valid_mask = valid_mask & future_ok
+
+        valid_contexts = contexts[valid_mask]
+        valid_positions = positions[valid_mask]
+
+        if len(valid_contexts) == 0:
+            raise RuntimeError(
+                f"No rows in test_df have sufficient context+future for "
+                f"context_length={context_length}, horizon={HORIZON}."
+            )
+
+        cov_values = test_df[covariate_cols].values.astype(np.float32)  # (T, C)
+        L = context_length
+        C = len(covariate_cols)
+        past_cov = np.zeros((len(valid_positions), L, C), dtype=np.float32)
+        future_cov = np.zeros((len(valid_positions), HORIZON, C), dtype=np.float32)
+        for i, tau_pos in enumerate(valid_positions):
+            issuance = tau_pos - ISSUANCE_OFFSET
+            past_cov[i] = cov_values[issuance - L + 1 : issuance + 1]
+            # Horizon covariates: from issuance+1 to issuance+HORIZON inclusive.
+            future_cov[i] = cov_values[issuance + 1 : issuance + 1 + HORIZON]
+
+        blocks = self._forecast_batch_with_covariates(
+            valid_contexts, past_cov, future_cov,
+        )
+        if blocks.shape != (len(valid_contexts), HORIZON):
+            raise AssertionError(
+                f"_forecast_batch_with_covariates returned {blocks.shape}, "
+                f"expected ({len(valid_contexts)}, {HORIZON})"
+            )
+
+        return pd.DataFrame({
+            "y_true": test_df["actual_load"].values[valid_mask],
+            "y_pred": blocks[:, -1],
+            "y_block": [b.tolist() for b in blocks],
+            "regime": test_df["regime"].values[valid_mask],
+        }, index=test_df.index[valid_mask])
