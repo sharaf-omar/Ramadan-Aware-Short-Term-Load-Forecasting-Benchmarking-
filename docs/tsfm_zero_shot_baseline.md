@@ -1,14 +1,15 @@
 # TSFM Zero-Shot Baseline — Final Results
 
 End-state cross-architecture comparison of the four proposal TSFMs against the
-LightGBM baseline on the Turkish STLF test set (2024-01-01 to 2025-03-31,
-10,944 forecast hours). Reports each model at its **best context-length** from
-the Ablation C sweep.
+LightGBM and classical baselines on the Turkish STLF test set
+(2024-01-01 to 2025-03-31, 10,944 forecast hours). Reports each TSFM at its
+**best context-length** from the Ablation C sweep.
 
-This doc supersedes the Plan 2 baseline draft. The two companion docs are
-[`docs/tsfm_context_length_sweep.md`](tsfm_context_length_sweep.md) for the
-full L × model grid, and [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariates.md)
-for Ablation A.
+This doc supersedes the Plan 2 baseline draft. Companion docs:
+[`docs/tsfm_context_length_sweep.md`](tsfm_context_length_sweep.md) (Ablation
+C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariates.md)
+(Ablation A), [`docs/classical_baselines.md`](classical_baselines.md)
+(MSTL+ETS and SARIMAX detail).
 
 ## Setup
 
@@ -32,11 +33,15 @@ for Ablation A.
 
 | Model                       | MAE    | RMSE   |
 |-----------------------------|--------|--------|
-| LightGBM (hijri-tuned)      |  979.0 | 1527.1 |
 | **Chronos-Bolt-Base L=720** | **968.9** | 1630.8 |
+| LightGBM (hijri-tuned)      |  979.0 | 1527.1 |
 | Time-MoE-200M L=720         |  985.9 | 1620.5 |
 | TimesFM 2.5-200M L=168      | 1173.2 | 1848.9 |
+| MSTL+ETS hijri              | 1527.5 | 2289.4 |
+| MSTL+ETS nohijri            | 1593.3 | 2344.1 |
 | Moirai-1.1-R-Small L=336    | 1727.1 | 2549.2 |
+| SARIMAX hijri               | 2485.9 | 3356.2 |
+| SARIMAX nohijri             | 2525.8 | 3440.8 |
 
 **Headline:** **Chronos-Bolt-Base at L=720 beats LightGBM on aggregate MAE
 (968.9 vs 979.0)** — a zero-shot model with no Turkish-data exposure and no
@@ -48,10 +53,14 @@ L=720 is essentially tied (985.9).
 | Model                       | Normal | Ramadan | Heatwave | Compound |
 |-----------------------------|--------|---------|----------|----------|
 | LightGBM (hijri-tuned)      | **873.5**  | **800.0**   | 1693.0   | (empty)  |
-| Chronos-Bolt-Base L=720     |  904.0 | 1061.0  | 1221.2   | (empty)  |
-| Time-MoE-200M L=720         |  908.8 | 1115.6  | **1267.6**   | (empty)  |
+| Chronos-Bolt-Base L=720     |  904.0 | 1061.0  | **1221.2**   | (empty)  |
+| Time-MoE-200M L=720         |  908.8 | 1115.6  | 1267.6   | (empty)  |
 | TimesFM 2.5-200M L=168      | 1082.5 | 1195.8  | 1624.2   | (empty)  |
+| MSTL+ETS hijri              | 1371.9 | 1327.0  | 2522.3   | (empty)  |
+| MSTL+ETS nohijri            | 1370.6 | 1842.7  | 2522.3   | (empty)  |
 | Moirai-1.1-R-Small L=336    | 1645.4 | 1695.7  | 2181.4   | (empty)  |
+| SARIMAX hijri               | 2422.8 | 2250.6  | 3030.9   | (empty)  |
+| SARIMAX nohijri             | 2477.9 | 2255.5  | 3024.1   | (empty)  |
 
 ## Where each model wins
 
@@ -60,6 +69,10 @@ L=720 is essentially tied (985.9).
 | Normal   | LightGBM-hijri       | 873.5 | Chronos-Bolt L=720       | 904.0 |
 | Ramadan  | **LightGBM-hijri**       | **800.0** | Chronos-Bolt L=720       | 1061.0 |
 | Heatwave | **Chronos-Bolt L=720**   | **1221.2** | Time-MoE L=720           | 1267.6 |
+
+Classical baselines never win a regime: MSTL+ETS hijri is the strongest
+classical (Ramadan 1327, +66% over LGBM) but ranked #5–6 overall. SARIMAX
+ranks last on every regime. Detail: [`classical_baselines.md`](classical_baselines.md).
 
 **The proposal's central regime-conditional hypothesis is confirmed on real
 data:**

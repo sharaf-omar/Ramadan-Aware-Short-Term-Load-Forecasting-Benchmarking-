@@ -70,3 +70,28 @@ def test_tsfm_hijri_prediction_exists(model_name):
     assert "y_pred" in df.columns
     assert df["y_pred"].notna().all()
     assert len(df) > 5000
+
+
+# Plan 4: classical baselines.
+CLASSICAL_RUNS = [
+    ("mstl_ets", "nohijri"),
+    ("mstl_ets", "hijri"),
+    ("sarimax",  "nohijri"),
+    ("sarimax",  "hijri"),
+    ("sarimax",  "hijri_plusB"),
+]
+
+
+@pytest.mark.parametrize("model_name,variant", CLASSICAL_RUNS)
+def test_classical_prediction_exists(model_name, variant):
+    p = PRED_DIR / f"{model_name}__{variant}__seed0.parquet"
+    assert p.exists(), (
+        f"Missing {p}. Re-run "
+        f"scripts/run_classical.py --model {model_name} --variant {variant}."
+    )
+    df = pd.read_parquet(p)
+    assert "y_true" in df.columns
+    assert "y_pred" in df.columns
+    assert "regime" in df.columns
+    assert df["y_pred"].notna().all()
+    assert len(df) > 5000
