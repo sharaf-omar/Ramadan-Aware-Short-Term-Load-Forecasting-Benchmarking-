@@ -10,7 +10,7 @@ extreme-heat regimes.
 - [x] Plan 1: Foundation + evaluation harness + LightGBM refactor
 - [x] Plan 2: TSFM zero-shot baseline (Chronos, TimesFM, Moirai at L=336; Time-MoE deferred)
 - [x] Plan 3: TSFM ablations + L sweep (Time-MoE rescued, L∈{96,168,336,720}, Hijri covariates A)
-- [ ] Plan 4: Classical baselines (MSTL+ETS, SARIMAX)
+- [x] Plan 4: Classical baselines (MSTL+ETS, SARIMAX) — see [`docs/classical_baselines.md`](docs/classical_baselines.md)
 - [ ] Plan 5: PatchTST
 - [ ] Plan 6: Post-hoc residual correction + ablation orchestration
 - [ ] Plan 7: Statistical analysis + deeper analysis + report artifacts
@@ -45,8 +45,8 @@ src/
   models/
     base.py      # Model protocol
     ml/lgbm.py   # LightGBM (current)
-    classical/   # (Plan 3) MSTL+ETS, SARIMAX
-    dl/          # (Plan 4) PatchTST
+    classical/   # MSTL+ETS, SARIMAX (Plan 4)
+    dl/          # (Plan 5) PatchTST
     tsfm/        # (Plan 2) Chronos, TimesFM, Moirai, Time-MoE
   evaluation/    # metrics, regime stratification, DM test (HAC), bootstrap, parquet I/O
 data/
