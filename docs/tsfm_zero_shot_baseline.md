@@ -33,9 +33,12 @@ C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariate
 
 | Model                       | MAE    | RMSE   |
 |-----------------------------|--------|--------|
-| **Ensemble (median of top 4)** | **891.4** | — |
-| **Routed best-per-regime**     | **916.0** | — |
+| **Ensemble (median of top 4 residual-corrected)** | **872.4** | — |
+| Ensemble (median of top 4 bare/mixed) | 891.4 | — |
+| Routed best-per-regime      | 916.0  | — |
+| LightGBM (hijri) + residual-h | 940.4  | — |
 | Chronos-Bolt-Base L=720 + residual-h | 948.5 | — |
+| LightGBM (nohijri) + residual-h | 950.7 | — |
 | Time-MoE-200M L=720 + residual-h     | 954.5 | — |
 | Chronos-Bolt-Base L=720     | 968.9  | 1630.8 |
 | LightGBM (hijri-tuned)      | 979.0  | 1527.1 |
@@ -43,7 +46,9 @@ C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariate
 | PatchTSMixer L=168 + residual-h | 1045.8 | — |
 | TimesFM 2.5-200M L=168 + residual-h  | 1057.5 | — |
 | TimesFM 2.5-200M L=168      | 1173.2 | 1848.9 |
+| SARIMAX hijri + residual-h  | 1299.3 | — |
 | Moirai-1.1-R-Small L=336 + residual-h | 1317.2 | — |
+| MSTL+ETS hijri + residual-h | 1364.9 | — |
 | MSTL+ETS hijri              | 1527.5 | 2289.4 |
 | MSTL+ETS nohijri            | 1593.3 | 2344.1 |
 | Moirai-1.1-R-Small L=336    | 1727.1 | 2549.2 |
@@ -53,29 +58,39 @@ C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariate
 Detail on post-hoc residual correction (the `+ residual-h` rows): [`residual_correction.md`](residual_correction.md).
 Detail on the ensemble and regime-routing recipes: [`capstone_synthesis.md`](capstone_synthesis.md) §10.
 
-**Headline (updated):** A median **ensemble of (Chronos-L720, LightGBM-hijri, Time-MoE-L720, Moirai+residual)** delivers
-aggregate MAE **891.4**, beating every single model by ≥8%. Behind it,
-post-hoc residual correction on Chronos and Time-MoE both land below 960
-MAE. The original single-model finding stands too: Chronos-Bolt-Base at
-L=720 (968.9) narrowly beats LightGBM-hijri (979.0) zero-shot.
+**Headline (updated):** A median **ensemble of four residual-corrected
+models** (Chronos+residual, LGBM-hijri+residual, Time-MoE+residual,
+Moirai+residual) delivers aggregate MAE **872.4** [95% CI 783.9,
+984.9], beating every single model by ≥9%. The mixed-bare-and-residual
+ensemble is right behind at 891.4. Among single models, **LightGBM-hijri
++ residual head** (940.4) is the new leader — post-hoc residual
+correction rescues even the tuned tabular incumbent. The original
+single-model finding still stands as the strongest result that requires
+no second-stage modeling: Chronos-Bolt-Base at L=720 (968.9) narrowly
+beats LightGBM-hijri (979.0) zero-shot.
 
 ## Per-regime MAE
 
-Top entries per regime (full 23-model table in [`statistical_appendix.md`](statistical_appendix.md)):
+Top entries per regime (full 28-model table in [`statistical_appendix.md`](statistical_appendix.md)):
 
 | Model                       | Normal | Ramadan | Heatwave | Compound |
 |-----------------------------|--------|---------|----------|----------|
-| Ensemble (median top 4)     | **804.2** |  930.2  | 1309.1   | (empty)  |
+| Ensemble (top 4 residual)   | **775.1** |  947.9  | 1309.1   | (empty)  |
+| Ensemble (top 4 mixed)      |  804.2 |  930.2  | 1309.1   | (empty)  |
+| LightGBM (hijri) + residual-h | 811.8 |  849.5  | 1693.0   | (empty)  |
+| LightGBM (nohijri) + residual-h | 815.6 | 907.2 | 1693.9 | (empty)  |
 | Routed best-per-regime      |  878.0 | **799.9** | **1221.2** | (empty)  |
 | LightGBM (hijri-tuned)      |  873.5 |  800.0  | 1693.0   | (empty)  |
-| Chronos-Bolt-Base L=720 + residual-h | 878.0 | 1050.5 | 1221.2 | (empty)  |
 | Time-MoE-200M L=720 + residual-h | 872.6 | 1076.7 | 1267.6 | (empty)  |
+| Chronos-Bolt-Base L=720 + residual-h | 878.0 | 1050.5 | 1221.2 | (empty)  |
 | Chronos-Bolt-Base L=720     |  904.0 | 1061.0  | 1221.2   | (empty)  |
 | Time-MoE-200M L=720         |  908.8 | 1115.6  | 1267.6   | (empty)  |
 | PatchTSMixer L=168 + residual-h | 866.2 | 1190.1 | 1847.4 | (empty)  |
 | TimesFM 2.5-200M L=168 + residual-h | 949.5 | 1052.7 | 1624.2 | (empty)  |
+| SARIMAX hijri + residual-h  |  972.7 | 1264.6  | 3030.9   | (empty)  |
 | TimesFM 2.5-200M L=168      | 1082.5 | 1195.8  | 1624.2   | (empty)  |
 | Moirai-1.1-R-Small L=336 + residual-h | 1150.2 | 1322.5 | 2181.4 | (empty)  |
+| MSTL+ETS hijri + residual-h | 1179.8 | 1154.3  | 2522.3   | (empty)  |
 | MSTL+ETS hijri              | 1371.9 | 1327.0  | 2522.3   | (empty)  |
 | Moirai-1.1-R-Small L=336    | 1645.4 | 1695.7  | 2181.4   | (empty)  |
 | SARIMAX hijri               | 2422.8 | 2250.6  | 3030.9   | (empty)  |
