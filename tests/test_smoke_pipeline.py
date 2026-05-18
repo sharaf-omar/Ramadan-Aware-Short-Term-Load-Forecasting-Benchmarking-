@@ -95,3 +95,35 @@ def test_classical_prediction_exists(model_name, variant):
     assert "regime" in df.columns
     assert df["y_pred"].notna().all()
     assert len(df) > 5000
+
+
+# Plan 7 sub-task: statistical appendix.
+STATS_DIR = ROOT / "data" / "statistical_appendix"
+STATS_DOC = ROOT / "docs" / "statistical_appendix.md"
+STATS_CSVS = [
+    "ci_table.csv",
+    "dm_aggregate.csv",
+    "dm_Normal.csv",
+    "dm_Ramadan.csv",
+    "dm_Heatwave.csv",
+]
+
+
+def test_statistical_appendix_doc_exists():
+    assert STATS_DOC.exists(), (
+        f"Missing {STATS_DOC}. Re-run scripts/build_statistical_appendix.py."
+    )
+    txt = STATS_DOC.read_text(encoding="utf-8")
+    assert "# Statistical Appendix" in txt
+    assert "## Bootstrap MAE confidence intervals" in txt
+    assert "## Pairwise Diebold-Mariano tests" in txt
+
+
+@pytest.mark.parametrize("name", STATS_CSVS)
+def test_statistical_appendix_csv_exists(name):
+    p = STATS_DIR / name
+    assert p.exists(), (
+        f"Missing {p}. Re-run scripts/build_statistical_appendix.py."
+    )
+    df = pd.read_csv(p)
+    assert len(df) > 0
