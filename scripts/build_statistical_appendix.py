@@ -275,3 +275,34 @@ def render_markdown(
             lines.append("| " + " | ".join(row_cells) + " |")
         lines.append("")
     return "\n".join(lines)
+
+
+def main() -> None:
+    print("[1/4] Loading 12 prediction parquets ...")
+    preds = load_predictions(MODELS)
+    n_tau = len(next(iter(preds.values())))
+    print(f"      intersection-on-tau: {n_tau:,} rows")
+
+    print("[2/4] Computing bootstrap MAE CIs (12 × 4 regimes = 48 cells, ~5 min) ...")
+    ci_df = compute_ci_table(preds, regimes=REGIMES)
+
+    print("[3/4] Computing pairwise DM matrices (4 regimes × 66 pairs each, ~5 min) ...")
+    dm_by_regime: dict[str, pd.DataFrame] = {}
+    for regime in REGIMES:
+        print(f"      DM regime={regime}")
+        dm_by_regime[regime] = compute_dm_matrix(preds, regime)
+
+    print("[4/4] Writing outputs ...")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    ci_df.to_csv(OUT_DIR / "ci_table.csv", index=False)
+    for regime, dm in dm_by_regime.items():
+        dm.to_csv(OUT_DIR / f"dm_{regime}.csv", index=False)
+    md = render_markdown(ci_df, dm_by_regime, n_tau=n_tau)
+    DOC_PATH.write_text(md, encoding="utf-8")
+    print(f"      -> {DOC_PATH}")
+    for f in sorted(OUT_DIR.iterdir()):
+        print(f"      -> {f}")
+
+
+if __name__ == "__main__":
+    main()
