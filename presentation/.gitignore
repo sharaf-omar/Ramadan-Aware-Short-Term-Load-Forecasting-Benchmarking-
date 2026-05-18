@@ -1,0 +1,15 @@
+# Vite + Node build artifacts
+dist/
+node_modules/
+
+# tsc emit artifacts that escape when noEmit isn't set
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+
+# PDF export output (regenerate with `npm run export:pdf`)
+presentation.pdf
+
+# Playwright
+playwright-report/
+test-results/
