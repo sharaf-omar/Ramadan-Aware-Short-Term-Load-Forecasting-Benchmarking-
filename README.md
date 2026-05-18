@@ -1,184 +1,312 @@
-# Ramadan-Aware Short-Term Load Forecasting Benchmark
+# Beyond Blackouts
 
-Capstone project benchmarking **31 forecasting systems** on Turkish national
-electricity load — including 4 modern time-series foundation models, a
-deep-learning baseline, two classical baselines, a tuned tree-based model,
-and an array of ensemble / residual-correction / regime-routing composites —
-with controlled ablations on **Hijri-calendar** regime shifts (Ramadan,
-Eid) and extreme-heat regimes. Every claim in the result docs is backed by
-a parquet on disk, a 95% block-bootstrap CI, and a Diebold-Mariano test
-with Holm-Bonferroni multiple-comparison adjustment.
+### When time-series foundation models meet calendar-driven regime shifts, MENA-grid load prediction, and geographically tuned post-hoc residual correction
 
-## Demo
+![Status](https://img.shields.io/badge/status-capstone--delivered-success?style=flat-square)
+![Systems benchmarked](https://img.shields.io/badge/systems-31_benchmarked-0F62FE?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-152_passing-42BE65?style=flat-square)
+![Report](https://img.shields.io/badge/report-11pp_PDF-FA4D56?style=flat-square)
+![Deck](https://img.shields.io/badge/deck-14_slides-A56EFF?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)
+![Node](https://img.shields.io/badge/node-20+-339933?style=flat-square&logo=node.js&logoColor=white)
+![LaTeX](https://img.shields.io/badge/LaTeX-MiKTeX-008080?style=flat-square&logo=latex&logoColor=white)
 
-A 2:49 animated walkthrough of the 14-slide IBM Carbon-style React presentation accompanying this work:
+Egypt has spent the last two summers under rolling load-shedding schedules,
+intermittent unscheduled blackouts, and proposed early-closing rules for
+shops and restaurants — blunt demand-side instruments that distribute the
+cost of forecast error across the entire commercial sector. Tighter
+day-ahead forecasting, particularly one that understands how demand
+reshapes around Ramadan, the two Eid holidays, and the heat-wave season,
+is the precondition for replacing those blunt measures with finer-grained
+market-based balancing. Because Egypt does not publish hourly load data at
+sufficient resolution, we use the **Turkish national load series** — the
+closest neighbour with comparable hot-Mediterranean weather, the same
+Hijri-driven Ramadan and Eid consumption shifts, and an open transparency
+platform — as a methodological proxy whose machinery transfers directly to
+the Egyptian grid once comparable data is released.
 
-<video src="https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4" controls width="100%"></video>
+On that proxy this repository delivers a rigorous **31-system benchmark**,
+a **2.4 MB / 11-page LaTeX report**, a **14-slide React presentation** with
+PDF export, and a 2:49 demo video — all derived from a single statistical
+harness that pins every numeric claim with a 95 % stationary block-
+bootstrap confidence interval and a Holm-adjusted Diebold–Mariano test.
 
-[Download the video](https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4) ·
-[Open the live deck](deck/index.html) ·
-[Reference page (presentation.html)](presentation.html) ·
-[Read the compiled report PDF](Beyond-Blackouts.pdf) ·
-[Run the deck from source](presentation/README.md)
+---
 
 ## Headline result
 
 The champion entry — **meta-router-v2** — combines four post-hoc-residual-
 corrected models for Normal hours, the tuned LightGBM-hijri model for
-Ramadan, and a 4-model Heatwave ensemble. Aggregate MAE on the
-14-month test set is **838.8 [95% CI 750.8, 948.7]**, a **−13.4%
-improvement** over the strongest single model (Chronos-Bolt-Base L=720 at
-MAE 968.9) and a **−14.3%** improvement over the 5-seed Optuna-tuned
-LightGBM-hijri baseline (MAE 979.0).
+Ramadan, and a 4-model Heat-wave ensemble of Chronos and Time-MoE.
+Aggregate MAE on the 14-month test set is **838.8 MW (95 % CI [750.8,
+948.7])** — **−13.4 %** over the strongest single bare model
+(Chronos-Bolt-Base $L=720$ at 968.9) and **−14.3 %** over the tuned
+LightGBM-hijri tabular incumbent (979.0).
 
-| Rank | System | Aggregate MAE | 95% CI |
-|------|--------|---------------|--------|
-| 1 | meta-router-v2 (ensemble × regime-routing × residual heads) | **838.8** | [750.8, 948.7] |
+<p align="center">
+  <img src="docs/figures/fig1_leaderboard_forest.png" alt="Top-15 leaderboard with 95% bootstrap CIs" width="820">
+</p>
+
+| Rank | System | Aggregate MAE (MW) | 95 % CI |
+|-----:|--------|-------------------:|---------|
+| 1 | **meta-router-v2** | **838.8** | [750.8, 948.7] |
 | 2 | meta-router v1 | 840.9 | [754.5, 953.0] |
-| 3 | ensemble (median of 4 residual-corrected) | 872.4 | [783.9, 984.9] |
-| 4 | ensemble (median of 4 mixed) | 891.4 | [798.6, 1009.8] |
-| 5 | stacked LightGBM meta-learner | 891.0 | [793.8, 1011.3] |
-| 6 | LightGBM-hijri + LGBM residual head | 940.4 | [848.5, 1044.1] |
-| 7 | Chronos-Bolt-Base L=720 + residual head | 948.5 | [846.9, 1072.4] |
-| ... | (full 31-row table) | | |
+| 3 | ensemble of 4 (residual-corrected) | 872.4 | [783.9, 984.9] |
+| 4 | stacked LightGBM meta-learner | 891.0 | [793.8, 1011.3] |
+| 5 | ensemble of 4 (mixed) | 891.4 | [798.6, 1009.8] |
+| 6 | routed best-per-regime | 916.0 | [824.2, 1036.9] |
+| 7 | LightGBM-hijri + residual head | 940.4 | [848.5, 1044.1] |
+| 8 | Chronos-Bolt L=720 + residual head | 948.5 | [846.9, 1072.4] |
+| … | full 31-row table | — | — |
 
-Detail and the full 31-model statistical appendix:
-[`docs/capstone_synthesis.md`](docs/capstone_synthesis.md) and
+Full table + four pairwise Diebold–Mariano matrices (aggregate, Normal,
+Ramadan, Heat-wave) in [`docs/statistical_appendix.md`](docs/statistical_appendix.md).
+
+---
+
+## Deliverables
+
+| | Artifact | Open |
+|---|---|---|
+| 🎞️ | **Demo video** (2:49 animated walkthrough) | [v0.1-capstone-demo · presentation-demo.mp4](https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4) |
+| 🖥️ | **Live deck** (static build, no install) | [`deck/index.html`](deck/index.html) |
+| 🏛️ | **Reference landing page** | [`presentation.html`](presentation.html) |
+| 📄 | **Compiled report** (11 pp, two-column) | [`Beyond-Blackouts.pdf`](Beyond-Blackouts.pdf) |
+| ⚙️ | **Presentation source** (Vite + React + TS) | [`presentation/`](presentation/) |
+| 📚 | **LaTeX source** | [`report/main.tex`](report/main.tex) |
+
+<video src="https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4" controls width="100%"></video>
+
+---
+
+## Three findings
+
+### 1 · The composite wins by pooling regime specialists
+
+Different model families win different regimes — no single model wins all
+three. The meta-router exploits this by routing each $\tau$ to the
+specialist best-suited to its regime.
+
+| Regime | Best single | Best composite | MAE (MW) |
+|---|---|---|---:|
+| Normal | LightGBM-hijri | ensemble-top4-residual | 775.1 |
+| Ramadan | LightGBM-hijri | meta-router-v2 (routes to LGBM) | 799.9 |
+| Heat-wave | Chronos-Bolt L=720 | meta-router-v2 (routes to Chronos) | 1206.0 |
+| Compound | — (structurally empty 2018-2025) | — | — |
+
+### 2 · A single residual head rescues every base model — monotonically
+
+<p align="center">
+  <img src="docs/figures/fig5_residual_impact.png" alt="Bare vs corrected MAE for nine base models" width="820">
+</p>
+
+A single post-hoc LightGBM residual head with **regime-stratified routing**
+(train on Normal + Ramadan only; pass Heat-wave $\tau$ to the bare base)
+improves all nine bases tested. The lift scales near-monotonically with
+bare-model weakness:
+
+| Base model | Bare MAE | Corrected | Δ |
+|---|--------:|---------:|--------:|
+| **SARIMAX-hijri** | 2485.9 | 1299.3 | **−47.7 %** |
+| PatchTSMixer L=168 | 1552.7 | 1045.8 | −32.6 % |
+| Moirai L=336 | 1727.1 | 1317.2 | −23.7 % |
+| MSTL+ETS-hijri | 1527.5 | 1364.9 | −10.6 % |
+| TimesFM L=168 | 1173.2 | 1057.5 | −9.9 % |
+| LightGBM-nohijri | 1003.3 | 950.7 | −5.3 % |
+| LightGBM-hijri | 979.0 | 940.4 | −4.0 % |
+| Time-MoE L=720 | 985.9 | 954.5 | −3.2 % |
+| Chronos-Bolt L=720 | 968.9 | 948.5 | −2.1 % |
+
+Without the regime stratification, Normal-regime bias regresses Heat-wave
+forecasts by 25–32 % on the strong TSFMs.
+
+### 3 · Same Hijri features, opposite outcomes
+
+<p align="center">
+  <img src="docs/figures/fig8_hijri_delta.png" alt="Ablation A: change in Ramadan MAE when Hijri features are added" width="820">
+</p>
+
+The same `is_ramadan` / `day_of_ramadan` / `is_eid` features produce
+**opposite** Ramadan-MAE outcomes depending on how they enter the model:
+
+- **HF in-band covariate API on TSFMs** → *hurts* TimesFM 14 %, Moirai 25 %
+  (DM $p<0.001$)
+- **Post-hoc LightGBM residual head on the same TSFMs** → *helps* the same
+  models by 9–22 %
+- **Feature engineering on tabular / classical models** → *helps* between
+  7 % (LightGBM) and 28 % (MSTL+ETS)
+
+The mechanism: HF's covariate API appends auxiliary channels into a
+pretrained attention context that has no prior over them; they function
+as distractors. A residual head bypasses that — it learns the calendar
+effect on the residual signal and adds it as a separate stage the
+foundation model never sees. **For zero-shot TSFMs, domain-specific
+covariates belong as external corrections, not internal inputs.**
+
+---
+
+## Quick start
+
+### Open the deliverables (no install)
+
+```bash
+# The static deck and the report PDF are pre-built at the repo root.
+open deck/index.html              # macOS
+start deck\index.html             # Windows
+xdg-open deck/index.html          # Linux
+
+open Beyond-Blackouts.pdf
+```
+
+### Run the presentation from source
+
+```bash
+cd presentation
+npm install
+npm run dev                       # http://localhost:5173
+
+# Launch directly into video-capture mode:
+#   http://localhost:5173/?autoplay=1&clean=1
+
+npm run build                     # production bundle in dist/
+npm run export:pdf                # writes presentation.pdf (vector text, 14 pp)
+```
+
+### Reproduce the benchmark
+
+```bash
+# Python pipeline (~5 minutes for data, then ~8 h GPU + 5 h CPU for the
+# full model grid; see docs/reproducibility.md for per-model commands)
+pip install -e . && pip install -r requirements.txt
+cp .env-example .env              # EPIAS credentials for the 2017 buffer
+
+python -m src.data.preprocess_epias
+python -m src.data.spatial_weights
+python -m src.data.build_v2_dataset
+
+pytest -q                         # 152 checks
+```
+
+### Rebuild the report
+
+```bash
+cd report
+latexmk -pdf -bibtex main.tex     # → main.pdf (11 pp, two-column)
+```
+
+---
+
+## Statistical contract
+
+Every numeric claim in the report and the deck is pinned by:
+
+| Apparatus | Implementation | Use |
+|---|---|---|
+| 95 % CI | Stationary block bootstrap (Politis & Romano 1994), mean block-length 24 h, 1 000 resamples | [`src/evaluation/bootstrap.py`](src/evaluation/bootstrap.py) |
+| Diebold–Mariano | Newey-West HAC variance, truncation lag $h-1 = 23$ | [`src/evaluation/dm_test.py`](src/evaluation/dm_test.py) |
+| Multiple comparison | Holm sequentially-rejective, $\alpha = 0.05$ | within each regime's pairwise family |
+| Regime stratification | Normal / Ramadan / Heat-wave / Compound | [`src/evaluation/regime_eval.py`](src/evaluation/regime_eval.py) |
+| Reproducibility | 152 pytest checks pin dataset, parquet schemas, statistical artefacts | [`tests/`](tests/) |
+
+The complete 31×31 DM matrices for all four regimes live in
 [`docs/statistical_appendix.md`](docs/statistical_appendix.md).
 
-## Status
+---
 
-- [x] **Plan 1** — Foundation, evaluation harness, LightGBM baseline ([Plan 1 doc](docs/superpowers/plans/2026-05-13-foundation-and-lgbm-refactor.md))
-- [x] **Plan 2** — TSFM zero-shot baselines (Chronos-Bolt, TimesFM, Moirai at L=336)
-- [x] **Plan 3** — TSFM ablations: context-length sweep (Ablation C, L ∈ {96, 168, 336, 720}), Hijri-covariate ablation (Ablation A), Time-MoE rescue ([`tsfm_context_length_sweep.md`](docs/tsfm_context_length_sweep.md), [`tsfm_hijri_covariates.md`](docs/tsfm_hijri_covariates.md))
-- [x] **Plan 4** — Classical baselines: MSTL+ETS and SARIMAX with day-ahead protocol ([`classical_baselines.md`](docs/classical_baselines.md))
-- [x] **Plan 5** — PatchTSMixer deep-learning baseline (substituted for vanilla PatchTST so cross-channel mixing enables the Hijri ablation) ([Plan 5 spec](docs/superpowers/specs/2026-05-14-patchtsmixer-baseline-design.md))
-- [x] **Plan 6** — Post-hoc LightGBM residual correction with regime-stratified routing ([`residual_correction.md`](docs/residual_correction.md))
-- [x] **Plan 7** — Statistical rigor + deep analysis + cross-model synthesis ([`statistical_appendix.md`](docs/statistical_appendix.md), [`deep_analysis.md`](docs/deep_analysis.md), [`failure_modes.md`](docs/failure_modes.md), [`capstone_synthesis.md`](docs/capstone_synthesis.md))
-- [x] **Tier 1-3 composite-model quick wins** — ensemble + regime router + meta-router + stacked LightGBM ([`capstone_synthesis.md`](docs/capstone_synthesis.md) §1 and §10)
+## What's in the box
 
-## What's notable
+- ✅ **Data pipeline** — EPIAS hourly load (2018-01 → 2025-03) joined with ERA5 weather (81 provinces, pop-weighted + southern-cities mean) and Umm al-Qura Hijri calendar features, with strict $t+24$-aware lag/rolling features
+- ✅ **Five model families** — four TSFMs (Chronos-Bolt-Base, TimesFM 2.5, Moirai 1.1-R, Time-MoE-200M) at four context lengths each, two classical baselines (MSTL+ETS, SARIMAX), a 5-seed Optuna-tuned LightGBM, and a from-scratch PatchTSMixer deep baseline
+- ✅ **Three controlled ablations** — Hijri-feature injection across model classes; the Compound (Ramadan × Heat-wave) regime documented as structurally empty for the 2018-2025 calendar; TSFM context-length sensitivity over $L \in \{96, 168, 336, 720\}$ · [context sweep](docs/tsfm_context_length_sweep.md) · [Hijri ablation](docs/tsfm_hijri_covariates.md)
+- ✅ **Post-hoc residual heads** — a single LightGBM head with regime-stratified routing applied to nine base models · [docs](docs/residual_correction.md)
+- ✅ **Three composite systems** — median ensemble, per-regime best-of router, Normal/Ramadan/Heat-wave meta-router v1 and v2 · [synthesis](docs/capstone_synthesis.md)
+- ✅ **Statistical appendix** — 31-system bootstrap CIs and four pairwise Diebold–Mariano matrices (aggregate, Normal, Ramadan, Heat-wave), Holm-adjusted · [appendix](docs/statistical_appendix.md) · [deep analysis](docs/deep_analysis.md) · [failure modes](docs/failure_modes.md)
+- ✅ **LaTeX report** — Egypt-anchored motivation, two-column layout, 11 pp · [`Beyond-Blackouts.pdf`](Beyond-Blackouts.pdf)
+- ✅ **React presentation** — 14-slide Carbon-styled deck with live Recharts charts, framer-motion animations, video-capture mode, and a Playwright-driven PDF exporter · [`deck/index.html`](deck/index.html) / [`presentation/`](presentation/)
 
-**Scope.** 31 forecasting systems benchmarked on the same 10,944-row test
-window. 152 automated pytest checks. 8 result docs +
-1 statistical appendix + ~20 sub-task spec/plan documents in
-[`docs/superpowers/`](docs/superpowers/).
+---
 
-**Statistical rigor.** Every headline claim has:
-- A 95% **stationary block-bootstrap** confidence interval
-  ([`bootstrap.py`](src/evaluation/bootstrap.py), Politis & Romano 1994).
-- A **Diebold-Mariano** test with HAC variance estimator
-  ([`dm_test.py`](src/evaluation/dm_test.py), Newey-West truncation lag
-  matching the day-ahead horizon).
-- **Holm-Bonferroni** multiple-comparison adjustment within each regime's
-  pairwise comparison family.
-- 4 pairwise DM matrices (aggregate + Normal + Ramadan + Heatwave) for
-  all 31 systems in [`docs/statistical_appendix.md`](docs/statistical_appendix.md).
-
-**Regime-conditional findings (proposal §6 confirmed).**
-- LightGBM-hijri owns the **Ramadan** regime (MAE 800) by an 11-33%
-  margin over the best TSFM — explicit Hijri feature engineering wins
-  on this slice.
-- Chronos-Bolt-Base L=720 owns the **Heatwave** regime (MAE 1221), 28%
-  better than LightGBM — long-context attention beats hand-crafted temp
-  features on weather extremes.
-- Composite meta-router pools regime-specialist models to land at MAE
-  838.8 aggregate.
-
-**Residual-correction discovery (Plan 6 + extensions).**
-Across 9 base models tested, the **lift from post-hoc LGBM residual
-correction scales monotonically with bare-model weakness:**
-- SARIMAX-hijri: 2486 → 1299 (−47.7%, largest single-model rescue)
-- PatchTSMixer L=168: 1553 → 1046 (−32.6%)
-- Moirai L=336: 1727 → 1317 (−23.7%)
-- MSTL+ETS-hijri: 1528 → 1365 (−10.6%)
-- TimesFM L=168: 1173 → 1058 (−9.9%)
-- LightGBM-nohijri: 1003 → 951 (−5.3%, rescuing the incumbent's untuned variant)
-- LightGBM-hijri: 979 → 940 (−4.0%, rescuing the incumbent itself)
-- Time-MoE L=720: 986 → 955 (−3.2%)
-- Chronos-Bolt-Base L=720: 969 → 949 (−2.1%)
-
-The **regime-stratified routing** (train on Normal+Ramadan only; route
-Heatwave τ back to the bare model) is the critical design choice —
-without it, the strong TSFMs *regress* on aggregate because the residual
-head injects bias from the more common Normal regime into Heatwave
-forecasts.
-
-**Hijri-covariate ablation reversed by injection mechanism.**
-Plan 3 showed Hijri features injected via HuggingFace's in-band
-covariate API *hurt* TimesFM and Moirai on Ramadan (DM p<0.001). Plan 6
-showed the *same* Hijri features applied as a post-hoc residual head
-*help* Moirai's Ramadan MAE by 22% and TimesFM's by 12%. **What you
-inject matters less than how you inject it** — a result the proposal
-predicted and that the benchmark now empirically supports.
-
-## Reproduction
+## Repository layout
 
 ```
-pip install -e . && pip install -r requirements.txt
-cp .env-example .env  # optional: EPIAS credentials for the 2017 buffer fetch
-
-python -m src.data.preprocess_epias        # -> data/processed/epias_processed_final.csv
-python -m src.data.spatial_weights         # -> data/processed/weather_proxy.csv
-python -c "from src.data.spatial_weights import build_southern_temp_series, PROCESSED_DIR; s = build_southern_temp_series(); s.reset_index().rename(columns={'index':'timestamp'}).to_csv(PROCESSED_DIR/'southern_temp.csv', index=False)"
-python -m src.data.build_v2_dataset        # -> data/processed/final_training_set_v2.csv
-
-# Full reproduction of every model in the leaderboard:
-#   See docs/reproducibility.md for the canonical per-model commands.
-
-pytest -q                                  # 152 checks
+.                            ← top-level deliverables
+├── Beyond-Blackouts.pdf     latest report render (11 pp, 2.4 MB)
+├── presentation.html        landing page → deck / report / video / repo
+├── deck/                    static built presentation (744 KB)
+│
+├── presentation/            React deck source (Vite + TS + Carbon)
+│   ├── src/{components,charts,slides,reactbits}/
+│   └── scripts/export-pdf.mjs
+│
+├── report/                  LaTeX source (main.tex + refs.bib)
+│
+├── src/                     Python pipeline
+│   ├── data/                EPIAS + ERA5 preprocessing
+│   ├── features/            hijri, calendar, weather_nonlinear, regimes
+│   ├── models/              ml / classical / dl / tsfm / residual
+│   └── evaluation/          metrics, DM, block bootstrap, regimes
+│
+├── data/
+│   ├── processed/           v2 dataset + weather panels
+│   ├── predictions/         31 prediction parquets (per model × variant × L × seed)
+│   ├── statistical_appendix/ CI table + 4 DM matrices
+│   └── analysis/            horizon, diurnal, failure-mode CSVs
+│
+├── docs/                    8 result docs + reproduction manifest
+│   ├── statistical_appendix.md    31-system CIs + 4 pairwise DM matrices
+│   ├── capstone_synthesis.md      integrated cross-model narrative
+│   ├── residual_correction.md     residual-head methodology + results
+│   ├── deep_analysis.md           per-horizon + diurnal decomposition
+│   ├── failure_modes.md           worst-day analysis
+│   ├── reproducibility.md         end-to-end run instructions
+│   └── superpowers/               design specs + implementation notes
+│
+├── tests/                   pytest mirror of src/ (152 checks)
+└── scripts/                 CLI runners + analyzer / build scripts
 ```
 
-For TSFM and PatchTSMixer GPU work, see
-[`docs/tsfm_execution_guide.md`](docs/tsfm_execution_guide.md). For
-end-to-end one-shot reproduction of every parquet,
-[`docs/reproducibility.md`](docs/reproducibility.md).
+---
 
-## Project structure
+## Pipeline overview
 
-```
-src/
-  data/             # EPIAS + ERA5 preprocessing, southern-region temp
-  features/         # hijri, calendar, weather_nonlinear, regimes
-  models/
-    base.py         # Model protocol
-    ml/lgbm.py      # LightGBM
-    classical/      # MSTL+ETS, SARIMAX (Plan 4)
-    dl/             # PatchTSMixer (Plan 5)
-    tsfm/           # Chronos-Bolt, TimesFM, Moirai, Time-MoE (Plans 2-3)
-    residual/       # LGBMResidualModel (Plan 6)
-  evaluation/       # metrics, regime stratification, DM test (HAC), block bootstrap, parquet I/O
-data/
-  raw/              # ERA5 NetCDFs + EPIAS load CSV
-  processed/        # epias_processed_final.csv, weather_proxy.csv, southern_temp.csv, final_training_set_v2.csv
-  predictions/      # one parquet per (model, variant, L, seed); 31+ systems total
-  statistical_appendix/  # ci_table.csv, dm_aggregate.csv, dm_{regime}.csv
-  analysis/         # horizon_mae.csv, diurnal_mae.csv, failure_modes_*.csv
-docs/
-  capstone_synthesis.md       # cross-plan integrated narrative
-  tsfm_zero_shot_baseline.md  # headline cross-model table
-  statistical_appendix.md     # CIs + 4 pairwise DM matrices (31 models)
-  residual_correction.md      # Plan 6 + PatchTSMixer extension
-  deep_analysis.md            # per-horizon + diurnal decomposition
-  failure_modes.md            # worst-day analysis (universal + per-model)
-  classical_baselines.md      # MSTL+ETS + SARIMAX detail
-  tsfm_context_length_sweep.md  # Ablation C
-  tsfm_hijri_covariates.md    # Ablation A
-  v1_v2_lgbm_delta.md         # leakage fix and dataset migration
-  tsfm_execution_guide.md     # GPU runbook (RunPod + local)
-  reproducibility.md          # end-to-end run instructions
-  references.md               # bibliography
-  superpowers/                # design specs + implementation plans (per plan)
-tests/                        # pytest mirror of src/ + smoke parquet-existence checks
-scripts/                      # CLI runners + analyzer / build scripts
-```
+<p align="center">
+  <img src="docs/figures/fig10_pipeline.png" alt="End-to-end pipeline from data sources to evaluation" width="820">
+</p>
 
-## Regime definition note
+Three data sources (EPIAS hourly load, ERA5 weather across 81 provinces,
+Umm al-Qura Hijri calendar) feed a single $t+24$-aware **v2 feature
+panel**. Five model families emit predictions to a uniform parquet schema,
+which is composed by three families of composite systems and finally
+evaluated by one statistical harness.
 
-The proposal's strict 35°C heatwave threshold doesn't fire on Turkey's
-population-weighted national temperature (max ever ~36.1°C, never 3
-consecutive days ≥35°C). v2 dataset uses an unweighted-mean of 7
-southern-Turkish cities (Adana, Şanlıurfa, Gaziantep, Diyarbakır,
-Mersin, Konya, Antalya) as `temp_c_south` for heatwave detection while
+---
+
+## Authors
+
+| Name | Student ID |
+|---|---:|
+| Omar Shafiy | 23-201356 |
+| Eiad Essam | 23-101108 |
+| Omar Sharaf | 24-101236 |
+| Shady Adham | 23-101027 |
+
+**Supervisor**: Prof. Mohamed Taher Elrafaie
+**Institution**: Egypt University of Informatics — Computing & Information Sciences
+**Date**: May 2026
+
+---
+
+## Notes
+
+The proposal's literal 35 °C heat-wave threshold doesn't fire on Turkey's
+population-weighted national temperature (max ever ~36.1 °C, never three
+consecutive days ≥ 35 °C). The v2 dataset uses an **unweighted mean of
+seven southern-Turkish cities** (Adana, Şanlıurfa, Gaziantep, Diyarbakır,
+Mersin, Konya, Antalya) as `temp_c_south` for heat-wave detection, while
 keeping the pop-weighted `temp_c` for ML features. See
-[`docs/v1_v2_lgbm_delta.md`](docs/v1_v2_lgbm_delta.md).
+[`docs/v1_v2_lgbm_delta.md`](docs/v1_v2_lgbm_delta.md) for the leakage-fix
+and dataset-migration history.
+
+---
+
+<sub>This repository, the compiled report, the presentation deck, and the demo video together constitute the capstone deliverable. Every numeric claim in any of them traces back to a parquet file on disk under <code>data/predictions/</code>, a CI in <code>data/statistical_appendix/ci_table.csv</code>, and a DM cell in one of the four <code>dm_*.csv</code> matrices. Built with Claude Code.</sub>
