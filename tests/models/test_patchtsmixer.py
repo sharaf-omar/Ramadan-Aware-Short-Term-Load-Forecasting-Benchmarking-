@@ -123,3 +123,8 @@ def test_patchtsmixer_predict_returns_unified_schema():
     assert out.index.is_monotonic_increasing
     if "y_block" in out.columns:
         assert all(len(b) == 24 for b in out["y_block"].head(5))
+
+
+def test_patchtsmixer_reexported_from_dl_package():
+    from src.models.dl import PatchTSMixerModel as Re
+    assert Re is PatchTSMixerModel
