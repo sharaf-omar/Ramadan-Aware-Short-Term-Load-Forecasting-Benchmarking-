@@ -334,6 +334,292 @@ def fig6_failure_days() -> None:
     print(f"  -> {FIG_DIR / 'fig6_failure_days.png'}")
 
 
+# ====================================================================
+# Fig 7: L-sweep curves per TSFM (Ablation C)
+# ====================================================================
+def fig7_l_sweep() -> None:
+    PRED_DIR = ROOT / "data" / "predictions"
+    tsfms = [
+        ("chronos_bolt_base", "chronos-bolt-base", "#1976D2"),
+        ("timesfm_2_5",       "timesfm-2.5-200m",  "#2E7D32"),
+        ("moirai_1_1_small",  "moirai-1.1-small",  "#C62828"),
+        ("time_moe_200m",     "time-moe-200m",     "#D97700"),
+    ]
+    Ls = [96, 168, 336, 720]
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    for fname_prefix, label, color in tsfms:
+        maes = []
+        for L in Ls:
+            f = PRED_DIR / f"{fname_prefix}__nohijri__L{L}__seed0.parquet"
+            df = pd.read_parquet(f)
+            maes.append((df.y_true - df.y_pred).abs().mean())
+        ax.plot(Ls, maes, marker="o", markersize=7, color=color,
+                label=label, linewidth=2)
+        # Mark the best L per model
+        best_i = int(np.argmin(maes))
+        ax.scatter(Ls[best_i], maes[best_i], s=140, facecolor="white",
+                   edgecolor=color, linewidth=2.4, zorder=5)
+    ax.set_xticks(Ls)
+    ax.set_xlabel("Context length L (hours)")
+    ax.set_ylabel("Aggregate test MAE (MW)")
+    ax.set_title("Ablation C — TSFM aggregate MAE vs context length\n"
+                 "(open circle = per-model best L)", pad=12)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
+    fig.savefig(FIG_DIR / "fig7_l_sweep.png")
+    plt.close(fig)
+    print(f"  -> {FIG_DIR / 'fig7_l_sweep.png'}")
+
+
+# ====================================================================
+# Fig 8: Hijri-delta bar chart (Ablation A summary)
+# ====================================================================
+def fig8_hijri_delta() -> None:
+    PRED_DIR = ROOT / "data" / "predictions"
+    pairs = [
+        ("LightGBM",                "lgbm__nohijri__seed44.parquet",
+                                    "lgbm__hijri__seed44.parquet"),
+        ("MSTL+ETS",                "mstl_ets__nohijri__seed0.parquet",
+                                    "mstl_ets__hijri__seed0.parquet"),
+        ("SARIMAX",                 "sarimax__nohijri__seed0.parquet",
+                                    "sarimax__hijri__seed0.parquet"),
+        ("TimesFM L=336 (HF covariate)",  "timesfm_2_5__nohijri__L336__seed0.parquet",
+                                          "timesfm_2_5__hijri__L336__seed0.parquet"),
+        ("Moirai L=336 (HF covariate)",   "moirai_1_1_small__nohijri__L336__seed0.parquet",
+                                          "moirai_1_1_small__hijri__L336__seed0.parquet"),
+        ("PatchTSMixer L=168 (X-channel)", "patchtsmixer__nohijri__L168__seed42.parquet",
+                                            "patchtsmixer__hijri__L168__seed42.parquet"),
+        ("Chronos L=720 (residual head)", "chronos_bolt_base__residual__nohijri__L720__seed0.parquet",
+                                           "chronos_bolt_base__residual__hijri__L720__seed0.parquet"),
+        ("Time-MoE L=720 (residual head)", "time_moe_200m__residual__nohijri__L720__seed0.parquet",
+                                           "time_moe_200m__residual__hijri__L720__seed0.parquet"),
+        ("TimesFM L=168 (residual head)", "timesfm_2_5__residual__nohijri__L168__seed0.parquet",
+                                          "timesfm_2_5__residual__hijri__L168__seed0.parquet"),
+        ("Moirai L=336 (residual head)",  "moirai_1_1_small__residual__nohijri__L336__seed0.parquet",
+                                          "moirai_1_1_small__residual__hijri__L336__seed0.parquet"),
+    ]
+
+    rows = []
+    for name, nh, h in pairs:
+        d_nh = pd.read_parquet(PRED_DIR / nh)
+        d_h  = pd.read_parquet(PRED_DIR / h)
+        # Use Ramadan-only MAE since this is where Hijri features should matter most
+        ram_nh = d_nh[d_nh.regime == "Ramadan"]
+        ram_h  = d_h [d_h.regime  == "Ramadan"]
+        mae_nh = (ram_nh.y_true - ram_nh.y_pred).abs().mean()
+        mae_h  = (ram_h.y_true  - ram_h.y_pred).abs().mean()
+        rows.append({"model": name, "nohijri": mae_nh, "hijri": mae_h,
+                     "delta": mae_h - mae_nh})
+    df = pd.DataFrame(rows).sort_values("delta")
+
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+    colors = ["#2E7D32" if d < 0 else "#C62828" if d > 0 else "#6B6B6B" for d in df.delta]
+    y = np.arange(len(df))[::-1]
+    ax.barh(y, df.delta, color=colors, edgecolor="white", linewidth=0.5)
+    ax.set_yticks(y)
+    ax.set_yticklabels(df.model, fontsize=9)
+    ax.set_xlabel("Δ Ramadan MAE  (hijri − nohijri, MW)")
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_title("Ablation A — Ramadan MAE delta from Hijri features\n"
+                 "(green = Hijri helps,  red = Hijri hurts)", pad=12)
+    for i, (_, r) in enumerate(df.iterrows()):
+        label = f"{r.delta:+.0f} MW  ({100*r.delta/r.nohijri:+.1f}%)"
+        # Always place label OUTSIDE the bar on the side closer to zero
+        # so it never crosses the y-axis label area.
+        if r.delta > 0:
+            # Bar goes right of 0; put label to the RIGHT of the bar's tip.
+            ax.text(r.delta + 5, y[i], label,
+                    va="center", ha="left", fontsize=9, color="black")
+        else:
+            # Bar goes left of 0; put label to the RIGHT of the bar's tip
+            # (i.e., closer to zero), inside the empty space between the
+            # bar tip and the zero axis.
+            ax.text(r.delta + 5, y[i], label,
+                    va="center", ha="left", fontsize=9, color="black")
+    ax.set_axisbelow(True)
+    fig.savefig(FIG_DIR / "fig8_hijri_delta.png")
+    plt.close(fig)
+    print(f"  -> {FIG_DIR / 'fig8_hijri_delta.png'}")
+
+
+# ====================================================================
+# Fig 9: DM matrix heatmap (aggregate regime)
+# ====================================================================
+def fig9_dm_heatmap() -> None:
+    dm = pd.read_csv(ROOT / "data" / "statistical_appendix" / "dm_aggregate.csv")
+    ci = pd.read_csv(ROOT / "data" / "statistical_appendix" / "ci_table.csv")
+    # Order models by aggregate MAE (best first)
+    order = ci[ci.regime == "aggregate"].sort_values("mae").model.tolist()
+    n = len(order)
+    idx = {m: i for i, m in enumerate(order)}
+
+    # Build a (n, n) matrix of dm_stats, lower-triangular only
+    M = np.full((n, n), np.nan)
+    SIG = np.full((n, n), np.nan)  # 1 if p_holm<0.05 else 0
+    for _, row in dm.iterrows():
+        i, j = idx.get(row.model_i), idx.get(row.model_j)
+        if i is None or j is None or np.isnan(row.dm_stat):
+            continue
+        # CSV has (i, j) where i<j. We want a directional matrix where
+        # M[a, b] > 0 means column model is better than row model.
+        # dm_test returns positive when model_j is better than model_i.
+        # Place the value at [row=model_i, col=model_j].
+        M[i, j] = row.dm_stat
+        SIG[i, j] = 1.0 if (not np.isnan(row.p_holm)) and row.p_holm < 0.05 else 0.0
+
+    fig, ax = plt.subplots(figsize=(14, 12.5))
+    # Diverging colormap centered at 0
+    vmax = np.nanmax(np.abs(M))
+    im = ax.imshow(M, cmap="RdYlGn", vmin=-vmax, vmax=vmax,
+                   aspect="equal", interpolation="nearest")
+    ax.set_xticks(np.arange(n))
+    ax.set_yticks(np.arange(n))
+    ax.set_xticklabels(order, rotation=75, ha="right", fontsize=7.5)
+    ax.set_yticklabels(order, fontsize=7.5)
+
+    # Mark significant cells with a small dot
+    for i in range(n):
+        for j in range(n):
+            if not np.isnan(SIG[i, j]) and SIG[i, j] > 0:
+                ax.plot(j, i, marker=".", color="black", markersize=4)
+
+    ax.set_title("Diebold-Mariano statistic — aggregate regime, Holm-adjusted\n"
+                 "Cell color: green = column model significantly better;  "
+                 "red = row model better.   Black dot = p_holm < 0.05.",
+                 pad=22, fontsize=12)
+    cbar = fig.colorbar(im, ax=ax, shrink=0.7, label="DM statistic", pad=0.02)
+    cbar.ax.tick_params(labelsize=8)
+    fig.savefig(FIG_DIR / "fig9_dm_heatmap.png")
+    plt.close(fig)
+    print(f"  -> {FIG_DIR / 'fig9_dm_heatmap.png'}")
+
+
+# ====================================================================
+# Fig 10: Pipeline / architecture diagram
+# ====================================================================
+def fig10_pipeline() -> None:
+    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+    fig, ax = plt.subplots(figsize=(13, 8.5))
+    ax.set_xlim(0, 100)
+    ax.set_ylim(-3, 64)
+    ax.axis("off")
+
+    def box(x, y, w, h, text, color, edge="black", text_color="white", fs=10):
+        b = FancyBboxPatch((x, y), w, h,
+                           boxstyle="round,pad=0.4,rounding_size=1.2",
+                           facecolor=color, edgecolor=edge, linewidth=1.4)
+        ax.add_patch(b)
+        ax.text(x + w / 2, y + h / 2, text, ha="center", va="center",
+                color=text_color, fontsize=fs, fontweight="semibold")
+
+    def arrow(x1, y1, x2, y2, color="#444"):
+        ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2),
+                                     arrowstyle="-|>", mutation_scale=14,
+                                     color=color, linewidth=1.4))
+
+    # ---- Top row: data sources
+    box(2, 50, 22, 7, "EPIAS load\n(2018-2025 hourly)", "#37474F")
+    box(28, 50, 22, 7, "ERA5 weather\n(7 southern cities)", "#37474F")
+    box(54, 50, 22, 7, "Hijri calendar\n(hijridate library)", "#37474F")
+
+    # ---- Feature builder
+    box(28, 38, 44, 6, "src/data/build_v2_dataset.py — feature engineering",
+        "#2C3E50", fs=10)
+    for x in (13, 39, 65):
+        arrow(x, 50, x + 0.5, 44)
+
+    # ---- v2 dataset
+    box(36, 30, 28, 5, "final_training_set_v2.csv  (60k rows × 25 features)",
+        "#1565C0", fs=9.5)
+    arrow(50, 38, 50, 35)
+
+    # ---- Model families (parallel layer)
+    box(2,  18, 18, 8, "LightGBM\n(Plan 1)\n3 var × 5 seeds", "#2E7D32", fs=9)
+    box(22, 18, 18, 8, "TSFMs ×4\n(Plans 2-3)\nL ∈ {96,168,336,720}",
+        "#D97700", fs=9)
+    box(42, 18, 18, 8, "Classical\n(Plan 4)\nMSTL+ETS, SARIMAX", "#6B6B6B", fs=9)
+    box(62, 18, 18, 8, "PatchTSMixer\n(Plan 5)\nL=168, seed 42", "#7B1FA2", fs=9)
+    box(82, 18, 14, 8, "Residual\nheads\n(Plan 6)", "#5B8AB8", fs=9)
+    for x in (11, 31, 51, 71, 89):
+        arrow(50, 30, x, 26)
+
+    # ---- Composite layer
+    box(15, 7, 60, 6, "Tier 1-3 composites: ensembles, regime router, meta-router, stacked LGBM",
+        "#2E5C8A", fs=10)
+    for x in (11, 31, 51, 71, 89):
+        arrow(x, 18, x, 13)
+
+    # ---- Eval block
+    box(15, -1, 60, 5, "Evaluation: regime metrics, DM (HAC), block bootstrap, smoke tests",
+        "#1A237E", fs=9.5)
+    arrow(45, 7, 45, 4)
+
+    ax.text(50, 62.5,
+            "Pipeline overview — data → 31 forecasting systems → unified evaluation",
+            ha="center", va="center", fontsize=13, fontweight="semibold")
+
+    fig.savefig(FIG_DIR / "fig10_pipeline.png")
+    plt.close(fig)
+    print(f"  -> {FIG_DIR / 'fig10_pipeline.png'}")
+
+
+# ====================================================================
+# Fig 11: Sample-week forecast vs actual
+# ====================================================================
+def fig11_sample_weeks() -> None:
+    PRED_DIR = ROOT / "data" / "predictions"
+    router = pd.read_parquet(PRED_DIR / "meta_router_v2__seed0.parquet")
+    chronos = pd.read_parquet(PRED_DIR / "chronos_bolt_base__nohijri__L720__seed0.parquet")
+    if router.index.tz is None:
+        router.index = router.index.tz_localize("UTC")
+    if chronos.index.tz is None:
+        chronos.index = chronos.index.tz_localize("UTC")
+
+    # Pick one representative week per regime
+    weeks = {
+        "Normal":   ("2024-02-12", "2024-02-18"),
+        "Ramadan":  ("2024-03-15", "2024-03-21"),  # mid-Ramadan 2024
+        "Heatwave": ("2024-08-12", "2024-08-18"),  # mid heatwave 2024
+    }
+
+    fig, axes = plt.subplots(3, 1, figsize=(12.5, 9.5), sharex=False)
+    handles_global = labels_global = None
+    for i, (ax, (label, (start, end))) in enumerate(zip(axes, weeks.items())):
+        start_ts = pd.Timestamp(start, tz="UTC")
+        end_ts = pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)
+        mask = (router.index >= start_ts) & (router.index < end_ts)
+        r_sub = router[mask]
+        c_sub = chronos[(chronos.index >= start_ts) & (chronos.index < end_ts)]
+        if len(r_sub) == 0:
+            ax.text(0.5, 0.5, f"No {label} data in {start}..{end}",
+                    transform=ax.transAxes, ha="center")
+            continue
+        h1, = ax.plot(r_sub.index, r_sub.y_true, color="black",
+                      label="actual load", linewidth=1.7)
+        h2, = ax.plot(c_sub.index, c_sub.y_pred, color="#D97700",
+                      label="Chronos-L720 bare", linewidth=1.4, alpha=0.85)
+        h3, = ax.plot(r_sub.index, r_sub.y_pred, color="#1976D2",
+                      label="meta-router-v2 (composite)", linewidth=1.4, alpha=0.95)
+        ax.set_title(f"{label} week  ({start} → {end})", fontsize=11, pad=6)
+        ax.set_ylabel("Load (MW)")
+        ax.grid(alpha=0.3)
+        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%a %m-%d"))
+        ax.tick_params(axis="x", labelsize=8, rotation=15)
+        if handles_global is None:
+            handles_global = [h1, h2, h3]
+            labels_global = ["actual load", "Chronos-L720 bare",
+                             "meta-router-v2 (composite)"]
+    fig.suptitle("Sample-week forecasts: meta-router-v2 vs Chronos-bare vs actuals",
+                 fontsize=13, fontweight="semibold", y=0.995)
+    # Single legend at the top, below the suptitle.
+    fig.legend(handles_global, labels_global,
+               loc="upper center", bbox_to_anchor=(0.5, 0.965),
+               ncol=3, frameon=False, fontsize=10)
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    fig.savefig(FIG_DIR / "fig11_sample_weeks.png")
+    plt.close(fig)
+    print(f"  -> {FIG_DIR / 'fig11_sample_weeks.png'}")
+
+
 def main() -> None:
     print("Building figures ...")
     fig1_leaderboard_forest()
@@ -342,6 +628,11 @@ def main() -> None:
     fig4_per_regime_bars()
     fig5_residual_impact()
     fig6_failure_days()
+    fig7_l_sweep()
+    fig8_hijri_delta()
+    fig9_dm_heatmap()
+    fig10_pipeline()
+    fig11_sample_weeks()
     print(f"\nAll figures written to {FIG_DIR}/")
 
 
