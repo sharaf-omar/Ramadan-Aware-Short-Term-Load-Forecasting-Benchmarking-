@@ -31,6 +31,15 @@ MODELS: list[tuple[str, str]] = [
     ("sarimax-hijri",             "sarimax__hijri__seed0.parquet"),
     ("patchtsmixer-nohijri-L168", "patchtsmixer__nohijri__L168__seed42.parquet"),
     ("patchtsmixer-hijri-L168",   "patchtsmixer__hijri__L168__seed42.parquet"),
+    # Plan 6: post-hoc LGBM residual heads on the 4 TSFMs, 2 variants each.
+    ("chronos-bolt-L720+res-nh",  "chronos_bolt_base__residual__nohijri__L720__seed0.parquet"),
+    ("chronos-bolt-L720+res-h",   "chronos_bolt_base__residual__hijri__L720__seed0.parquet"),
+    ("moirai-L336+res-nh",        "moirai_1_1_small__residual__nohijri__L336__seed0.parquet"),
+    ("moirai-L336+res-h",         "moirai_1_1_small__residual__hijri__L336__seed0.parquet"),
+    ("timesfm-L168+res-nh",       "timesfm_2_5__residual__nohijri__L168__seed0.parquet"),
+    ("timesfm-L168+res-h",        "timesfm_2_5__residual__hijri__L168__seed0.parquet"),
+    ("time-moe-L720+res-nh",      "time_moe_200m__residual__nohijri__L720__seed0.parquet"),
+    ("time-moe-L720+res-h",       "time_moe_200m__residual__hijri__L720__seed0.parquet"),
 ]
 
 REGIMES = ["aggregate", "Normal", "Ramadan", "Heatwave"]
