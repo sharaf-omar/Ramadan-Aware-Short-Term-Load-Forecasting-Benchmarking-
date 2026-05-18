@@ -47,6 +47,23 @@ See [`docs/superpowers/specs/2026-05-14-residual-correction-design.md`](superpow
 
 **Bold** marks corrected MAEs that beat the bare baseline.
 
+### Extension: PatchTSMixer + residual head (out-of-Plan-6 scope)
+
+The same regime-stratified residual recipe applied to the Plan-5
+PatchTSMixer baseline produces the largest single-model improvement in
+the entire benchmark:
+
+| Model | Variant | Agg MAE | Normal | Ramadan | Heatwave |
+|---|---|---|---|---|---|
+| patchtsmixer-L168 | bare         | 1552.7 | 1496.2 | 1551.6 | 1847.4 |
+| patchtsmixer-L168 | +residual-h  | **1045.8** | **866.2** | **1190.1** | 1847.4 |
+
+That's **−32.6% aggregate**, moving the deep-learning baseline from
+mid-tier (rank ~17) to inside the top-tier cluster (rank ~8 in the
+appendix). Confirms that the regime-stratified residual recipe
+generalises beyond zero-shot TSFMs to trained-from-scratch deep
+models. Parquet: `patchtsmixer__residual__hijri__L168__seed42.parquet`.
+
 ## Headline finding
 
 **Residual correction with regime-stratified routing improves all four

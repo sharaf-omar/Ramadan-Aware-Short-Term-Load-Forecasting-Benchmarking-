@@ -33,42 +33,61 @@ C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariate
 
 | Model                       | MAE    | RMSE   |
 |-----------------------------|--------|--------|
-| **Chronos-Bolt-Base L=720** | **968.9** | 1630.8 |
-| LightGBM (hijri-tuned)      |  979.0 | 1527.1 |
-| Time-MoE-200M L=720         |  985.9 | 1620.5 |
+| **Ensemble (median of top 4)** | **891.4** | — |
+| **Routed best-per-regime**     | **916.0** | — |
+| Chronos-Bolt-Base L=720 + residual-h | 948.5 | — |
+| Time-MoE-200M L=720 + residual-h     | 954.5 | — |
+| Chronos-Bolt-Base L=720     | 968.9  | 1630.8 |
+| LightGBM (hijri-tuned)      | 979.0  | 1527.1 |
+| Time-MoE-200M L=720         | 985.9  | 1620.5 |
+| PatchTSMixer L=168 + residual-h | 1045.8 | — |
+| TimesFM 2.5-200M L=168 + residual-h  | 1057.5 | — |
 | TimesFM 2.5-200M L=168      | 1173.2 | 1848.9 |
+| Moirai-1.1-R-Small L=336 + residual-h | 1317.2 | — |
 | MSTL+ETS hijri              | 1527.5 | 2289.4 |
 | MSTL+ETS nohijri            | 1593.3 | 2344.1 |
 | Moirai-1.1-R-Small L=336    | 1727.1 | 2549.2 |
 | SARIMAX hijri               | 2485.9 | 3356.2 |
 | SARIMAX nohijri             | 2525.8 | 3440.8 |
 
-**Headline:** **Chronos-Bolt-Base at L=720 beats LightGBM on aggregate MAE
-(968.9 vs 979.0)** — a zero-shot model with no Turkish-data exposure and no
-Hijri features outperforms a 5-seed Optuna-tuned LightGBM. Time-MoE-200M at
-L=720 is essentially tied (985.9).
+Detail on post-hoc residual correction (the `+ residual-h` rows): [`residual_correction.md`](residual_correction.md).
+Detail on the ensemble and regime-routing recipes: [`capstone_synthesis.md`](capstone_synthesis.md) §10.
+
+**Headline (updated):** A median **ensemble of (Chronos-L720, LightGBM-hijri, Time-MoE-L720, Moirai+residual)** delivers
+aggregate MAE **891.4**, beating every single model by ≥8%. Behind it,
+post-hoc residual correction on Chronos and Time-MoE both land below 960
+MAE. The original single-model finding stands too: Chronos-Bolt-Base at
+L=720 (968.9) narrowly beats LightGBM-hijri (979.0) zero-shot.
 
 ## Per-regime MAE
 
+Top entries per regime (full 23-model table in [`statistical_appendix.md`](statistical_appendix.md)):
+
 | Model                       | Normal | Ramadan | Heatwave | Compound |
 |-----------------------------|--------|---------|----------|----------|
-| LightGBM (hijri-tuned)      | **873.5**  | **800.0**   | 1693.0   | (empty)  |
-| Chronos-Bolt-Base L=720     |  904.0 | 1061.0  | **1221.2**   | (empty)  |
+| Ensemble (median top 4)     | **804.2** |  930.2  | 1309.1   | (empty)  |
+| Routed best-per-regime      |  878.0 | **799.9** | **1221.2** | (empty)  |
+| LightGBM (hijri-tuned)      |  873.5 |  800.0  | 1693.0   | (empty)  |
+| Chronos-Bolt-Base L=720 + residual-h | 878.0 | 1050.5 | 1221.2 | (empty)  |
+| Time-MoE-200M L=720 + residual-h | 872.6 | 1076.7 | 1267.6 | (empty)  |
+| Chronos-Bolt-Base L=720     |  904.0 | 1061.0  | 1221.2   | (empty)  |
 | Time-MoE-200M L=720         |  908.8 | 1115.6  | 1267.6   | (empty)  |
+| PatchTSMixer L=168 + residual-h | 866.2 | 1190.1 | 1847.4 | (empty)  |
+| TimesFM 2.5-200M L=168 + residual-h | 949.5 | 1052.7 | 1624.2 | (empty)  |
 | TimesFM 2.5-200M L=168      | 1082.5 | 1195.8  | 1624.2   | (empty)  |
+| Moirai-1.1-R-Small L=336 + residual-h | 1150.2 | 1322.5 | 2181.4 | (empty)  |
 | MSTL+ETS hijri              | 1371.9 | 1327.0  | 2522.3   | (empty)  |
-| MSTL+ETS nohijri            | 1370.6 | 1842.7  | 2522.3   | (empty)  |
 | Moirai-1.1-R-Small L=336    | 1645.4 | 1695.7  | 2181.4   | (empty)  |
 | SARIMAX hijri               | 2422.8 | 2250.6  | 3030.9   | (empty)  |
-| SARIMAX nohijri             | 2477.9 | 2255.5  | 3024.1   | (empty)  |
 
 ## Where each model wins
 
-| Regime   | Winner               | MAE   | Runner-up                | MAE   |
-|----------|----------------------|-------|--------------------------|-------|
-| Normal   | LightGBM-hijri       | 873.5 | Chronos-Bolt L=720       | 904.0 |
-| Ramadan  | **LightGBM-hijri**       | **800.0** | Chronos-Bolt L=720       | 1061.0 |
-| Heatwave | **Chronos-Bolt L=720**   | **1221.2** | Time-MoE L=720           | 1267.6 |
+| Regime   | Winner (single model)  | MAE   | Winner (incl. composite) | MAE   |
+|----------|------------------------|-------|---------------------------|-------|
+| Normal   | LightGBM-hijri         | 873.5 | **Ensemble top-4 median** | **804.2** |
+| Ramadan  | LightGBM-hijri         | 800.0 | **Routed best-per-regime** | **799.9** (= LGBM-hijri by construction) |
+| Heatwave | Chronos-Bolt-Base L=720 | 1221.2 | (tied — Chronos and Routed)| 1221.2 |
+| Aggregate | Chronos-Bolt-Base L=720 | 968.9 | **Ensemble top-4 median** | **891.4** |
 
 Classical baselines never win a regime: MSTL+ETS hijri is the strongest
 classical (Ramadan 1327, +66% over LGBM) but ranked #5–6 overall. SARIMAX
