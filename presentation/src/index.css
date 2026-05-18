@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #161616;
+  color: #f4f4f4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss03"; /* Plex stylistic alt for cleaner glyphs */
+}
+
+/* Carbon typography utilities --------------------------------------------
+   These mirror the names from the Carbon spec so component code reads
+   close to how the design system documents them.
+   Ref: https://carbondesignsystem.com/elements/typography/type-sets
+*/
+.type-label-01    { font: 400 12px/16px 'IBM Plex Sans'; letter-spacing: 0.32px; }
+.type-helper-01   { font: 400 12px/16px 'IBM Plex Sans'; letter-spacing: 0.32px; }
+.type-body-01     { font: 400 14px/20px 'IBM Plex Sans'; letter-spacing: 0.16px; }
+.type-body-02     { font: 400 16px/22px 'IBM Plex Sans'; letter-spacing: 0px; }
+.type-heading-01  { font: 600 14px/18px 'IBM Plex Sans'; letter-spacing: 0.16px; }
+.type-heading-02  { font: 600 16px/22px 'IBM Plex Sans'; letter-spacing: 0px; }
+.type-heading-03  { font: 400 20px/28px 'IBM Plex Sans'; letter-spacing: 0px; }
+.type-heading-04  { font: 400 28px/36px 'IBM Plex Sans'; letter-spacing: 0px; }
+.type-heading-05  { font: 400 32px/40px 'IBM Plex Sans'; letter-spacing: 0px; }
+.type-heading-06  { font: 300 42px/50px 'IBM Plex Sans'; letter-spacing: 0px; }
+.type-heading-07  { font: 300 54px/64px 'IBM Plex Sans'; letter-spacing: 0px; }
+
+/* Productive number display (dashboard hero numbers, Plex Light). */
+.type-display-01  { font: 300 42px/50px  'IBM Plex Sans'; letter-spacing: 0px; }
+.type-display-02  { font: 300 54px/64px  'IBM Plex Sans'; letter-spacing: 0px; }
+.type-display-03  { font: 300 68px/78px  'IBM Plex Sans'; letter-spacing: 0px; }
+.type-display-04  { font: 300 96px/104px 'IBM Plex Sans'; letter-spacing: 0px; }
+
+.type-code-01     { font: 400 12px/16px 'IBM Plex Mono'; letter-spacing: 0.32px; }
+.type-code-02     { font: 400 14px/20px 'IBM Plex Mono'; letter-spacing: 0.32px; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Layer system — flat, no blur, 1px hairline. */
+.layer-01 { background: #262626; }
+.layer-02 { background: #393939; }
+.border-subtle { border: 1px solid #393939; }
+.border-strong { border: 1px solid #6f6f6f; }
+.border-bottom-subtle { border-bottom: 1px solid #393939; }
+
+/* Subtle hover affordance (no scale, no glow). */
+.row-hover { transition: background-color 0.11s cubic-bezier(0.2,0,0.38,0.9); }
+.row-hover:hover { background: #393939; }
+
+/* Scrollbar — Carbon style (narrow, neutral). */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #393939; }
+::-webkit-scrollbar-thumb:hover { background: #525252; }
+
+/* Recharts overrides — Plex Mono axes, neutral grid. */
+.recharts-cartesian-grid line { stroke: #393939 !important; }
+.recharts-cartesian-axis-tick-value {
+  fill: #c6c6c6 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 11px !important;
+}
+.recharts-tooltip-wrapper { outline: none !important; }
+.recharts-legend-item-text {
+  color: #c6c6c6 !important;
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 12px !important;
+}
+
+/* Focus ring — Carbon's signature 2px white outline. */
+*:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 0;
+}
+
+/* Disable any text-shimmer fanciness on selection. */
+::selection { background: #0f62fe; color: #ffffff; }

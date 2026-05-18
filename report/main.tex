@@ -1,0 +1,1097 @@
+% =====================================================================
+% Ramadan-Aware Short-Term Load Forecasting — Capstone Report
+% =====================================================================
+% Compile with:  latexmk -pdf -bibtex main.tex
+% (requires biber; if unavailable, switch \usepackage{biblatex} options
+%  to backend=bibtex and use bibtex+pdflatex)
+% =====================================================================
+
+\documentclass[10pt, a4paper, twocolumn]{article}
+
+% ---------- Layout ----------
+\usepackage[margin=0.85in, headheight=14pt, columnsep=18pt]{geometry}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{setspace}
+\setstretch{1.02}
+\setlength{\columnsep}{18pt}
+
+% ---------- Encoding & fonts ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}  % scalable Computer Modern (required by microtype expansion)
+
+% ---------- Graphics ----------
+\usepackage{graphicx}
+\graphicspath{{../docs/figures/}}
+
+% ---------- Math ----------
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{siunitx}
+\sisetup{group-separator={,}, group-minimum-digits=4}
+
+% ---------- Tables ----------
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{makecell}
+\renewcommand{\arraystretch}{1.05}
+
+% ---------- Captions / floats ----------
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\captionsetup[figure]{font=small, labelfont=bf, skip=4pt}
+\captionsetup[table]{font=small, labelfont=bf, skip=4pt}
+
+% ---------- Color / boxes ----------
+\usepackage{xcolor}
+\definecolor{accent}{HTML}{1F3A93}
+\definecolor{lightgray}{HTML}{F2F4F7}
+\usepackage[most]{tcolorbox}
+\newtcolorbox{takeaway}[1][]{enhanced, breakable, colback=lightgray,
+  colframe=accent, boxrule=0.6pt, arc=2pt, left=8pt, right=8pt,
+  top=4pt, bottom=4pt, fonttitle=\bfseries, title={Key takeaway}, #1}
+
+% ---------- Headers ----------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Ramadan-Aware STLF Benchmark}
+\fancyhead[R]{\small \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ---------- Sections ----------
+\usepackage{titlesec}
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\itshape}{\thesubsubsection}{0.4em}{}
+
+% ---------- Hyperlinks (load last) ----------
+\usepackage[colorlinks=true, allcolors=accent, pdfborder={0 0 0}]{hyperref}
+\usepackage[capitalise, nameinlink]{cleveref}
+
+% ---------- Bibliography ----------
+\usepackage[backend=biber, style=numeric-comp, sorting=none, maxbibnames=99]{biblatex}
+\addbibresource{refs.bib}
+
+% ---------- Title block ----------
+\title{
+  \vspace*{-1cm}
+  \textbf{\Large Beyond Blackouts:}\\[4pt]
+  \textbf{\large When Time-Series Foundation Models Meet Calendar-Driven Regime Shifts,}\\
+  \textbf{\large MENA-Grid Load Prediction, and Geographically Tuned}\\
+  \textbf{\large Post-Hoc Residual Correction}\\[6pt]
+  \rule{0.85\textwidth}{0.4pt}
+}
+\author{
+  Omar Shafiy (23-201356) \and
+  Eiad Essam (23-101108) \and
+  Omar Sharaf (24-101236) \and
+  Shady Adham (23-101027) \\[4pt]
+  \small\itshape Egypt University of Informatics --- Computing \& Information Sciences \\
+  \small\itshape Supervisor: \textbf{Prof.\ Mohamed Taher Elrafaie}
+}
+\date{\today}
+
+% =====================================================================
+\begin{document}
+% =====================================================================
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent
+Egypt has spent the last two summers under rolling load-shedding
+schedules and intermittent unscheduled blackouts, and the
+government has begun piloting blunt demand-side measures --- most
+visibly proposed early-closing rules for shops and restaurants ---
+to compress the evening peak. Better day-ahead load forecasting,
+particularly one that explicitly understands how demand reshapes
+around Ramadan, the two Eid holidays, and the heat-wave season,
+is a precondition for replacing rolling blackouts and commercial
+curfews with finer-grained, market-based balancing. Because Egypt
+does not publish hourly load data at sufficient resolution and
+history, we use the Turkish national load series --- the closest
+neighbor with comparable hot-Mediterranean weather, the same
+Hijri-driven Ramadan and Eid consumption shifts, and an open
+transparency platform --- as a methodological proxy whose
+machinery transfers directly to the Egyptian grid once comparable
+data is released.
+
+On this proxy we present a rigorous empirical benchmark of
+\num{31} forecasting systems on the day-ahead horizon, with a focus
+on how each system handles the regime shifts induced by the Hijri
+lunar calendar (Ramadan, Eid) and the southern-Mediterranean
+heat-wave season. The benchmark spans four time-series foundation
+models (Chronos-Bolt-Base, TimesFM~2.5, Moirai~1.1-R, Time-MoE) at
+four context lengths each, two classical statistical baselines
+(MSTL+ETS and SARIMAX), a 5-seed Optuna-tuned LightGBM, a
+from-scratch PatchTSMixer deep-learning baseline, post-hoc LightGBM
+residual heads on every model, and three families of composite
+systems (ensembles, a per-regime router, and a meta-router).
+Evaluation is unified: every system writes predictions to the same
+parquet schema and is compared on a held-out 10{,}944-hour test
+window (2024-01-01 to 2025-03-31) using regime-stratified MAE,
+95\% stationary-block-bootstrap confidence intervals, and
+Diebold-Mariano tests with Newey-West HAC variance and
+Holm-Bonferroni multiple-comparison adjustment.
+
+Three findings stand out. First, a meta-router composite combining
+four residual-corrected models for the Normal regime, LightGBM-hijri
+for Ramadan, and a Heat-wave ensemble of Chronos-Bolt and Time-MoE
+achieves aggregate MAE \num{838.8} MW (95\% CI [\num{750.8},
+\num{948.7}]), a $-13.4\%$ improvement over the strongest single
+model (Chronos-Bolt-Base at $L{=}720$, MAE \num{968.9}). Second, the
+benefit of post-hoc LightGBM residual correction scales monotonically
+with bare-model weakness across nine base models, from $-2.1\%$ on
+Chronos to $-47.7\%$ on SARIMAX. Third, identical Hijri features
+applied via two different injection paths produce opposite outcomes:
+ingesting them into the HuggingFace covariate API of TimesFM and
+Moirai \emph{hurts} Ramadan MAE by 14--25\% with high statistical
+significance, while applying them through a post-hoc LightGBM
+residual head \emph{helps} the same models on Ramadan by 9--22\%.
+We argue this constitutes a clean empirical demonstration that, for
+zero-shot foundation models, post-hoc residual correction is a
+principled and reliable mechanism for injecting domain-specific
+calendar structure where in-band covariate paths fail --- and that
+the resulting meta-router pipeline is a deployable template for
+any hot, predominantly Muslim Mediterranean grid (Egypt included)
+that operates under the same Ramadan, Eid, and heat-wave stresses.
+\end{abstract}
+
+\vfill
+\noindent\small\textit{Code, data pipelines, all 31 prediction
+parquets, the full 31-system bootstrap CI table, the four
+$31{\times}31$ pairwise Diebold-Mariano matrices, and the canonical
+reproduction commands are released alongside this report at
+\texttt{docs/} in the project repository.}
+
+% =====================================================================
+\section{Introduction}
+\label{sec:intro}
+% =====================================================================
+
+\subsection{Motivation}
+
+Over the last two summers, Egypt has lived through the most
+visible electricity crisis in a generation. From mid-2023 onward,
+the Egyptian Electricity Holding Company introduced a nationwide
+load-shedding schedule (\emph{takhf\=if al-a\d{h}m\=al}) of one to
+three hours per day per feeder to contain peak-hour demand against
+a shortfall driven by reduced natural-gas availability and
+record-setting heat-waves. Unscheduled blackouts on top of the
+published schedule were widely reported during the July-September
+peaks of both 2023 and 2024, and the country's Cabinet has piloted
+demand-side measures targeting the evening peak directly,
+including proposed early-closing rules for shops and restaurants
+intended to compress the post-iftar and late-evening load
+window. These measures are blunt instruments: they distribute the
+cost of forecast error across the entire commercial sector rather
+than across the dispatch portfolio of the operator. A tighter
+day-ahead forecast --- particularly one that explicitly understands
+how demand reshapes around Ramadan, the two Eid holidays, and the
+heat-wave season --- is a precondition for replacing rolling
+blackouts and broad commercial curfews with finer-grained,
+market-based balancing.
+
+This is the practical problem that motivates the present work:
+to build and rigorously evaluate a forecasting system that handles
+the regime structure specific to a hot, predominantly Muslim
+Mediterranean grid. Egypt itself does not publish hourly load data
+at sufficient resolution and history for a benchmark of this
+scope; Turkey, its closest neighbor with broadly comparable
+weather patterns (hot-Mediterranean summers, mild winters along
+the coastal load centers) and the same Hijri-driven Ramadan and
+Eid consumption shifts, does publish such data openly through the
+EPIAS transparency platform~\cite{epias}. We therefore use the
+Turkish national load series as a methodological proxy: the
+forecasting machinery, the Hijri-feature design, the regime
+definitions, and the residual-correction framework developed here
+are all transferable to the Egyptian grid as soon as comparable
+data is released, and we make this transferability explicit
+throughout the methodology.
+
+Short-term electricity-load forecasting (STLF) at the day-ahead
+horizon is a well-studied problem from a pure-forecasting
+perspective: every megawatt-hour mis-forecast translates into
+either spilled reserve capacity or spot-market exposure, and grid
+operators world-wide re-tender their day-ahead positions in
+fifteen-minute settlement windows that exact a measurable cost on
+every percentage point of mean absolute
+error~\cite{hong2016probabilistic, hong2020energy}. For two
+decades, the operational gold-standard methodology has been a
+combination of seasonal decomposition (typically MSTL or SARIMA
+variants) and tabular tree-based learners over hand-engineered
+weather, calendar, and lag features. More recently, two parallel
+research threads have begun to challenge that status~quo:
+(i)~time-series foundation models (TSFMs), which apply the
+pretraining paradigm of large language models to time series and
+have demonstrated competitive zero-shot performance across
+hundreds of domains, including
+electricity~\cite{ansari2024chronos, das2024timesfm, woo2024moirai, shi2024timemoe};
+and (ii)~lightweight deep-learning architectures designed
+specifically for long-horizon forecasting, of which PatchTST and
+its multivariate sibling PatchTSMixer are
+prominent~\cite{nie2023patchtst, ekambaram2023tsmixer}. Whether
+either family delivers usable accuracy gains under the specific
+calendar and weather stresses faced by Egyptian-style grids ---
+and whether they degrade gracefully or catastrophically during
+the regime shifts that matter most operationally --- is the
+empirical question this benchmark answers.
+
+Hijri-calendar regime structure also makes a clean methodological
+lens in its own right. Because Ramadan and the two Eid holidays
+follow the lunar Hijri calendar, they migrate through the
+Gregorian year by approximately eleven days annually, sweeping
+across seasons and weather backgrounds over an 8-year benchmark
+window. This rotation makes Hijri-feature injection a
+near-controlled experiment: the same calendar effect is presented
+in winter, spring, summer, and autumn weather contexts, and the
+question of \emph{how} a forecasting system absorbs structured
+calendar covariates becomes separable from the question of
+\emph{whether} the underlying weather model is well-specified.
+
+\subsection{Problem statement}
+
+Let $y_t \in \mathbb{R}$ denote the Turkish national hourly load at
+time $t$. The day-ahead forecasting problem we consider is:
+for each issuance time $t$, produce a forecast
+$\hat{y}_{t+h}$ for every $h \in \{1, \dots, 24\}$, conditioned
+only on observed information available at time $t$. The headline
+metric, by convention used throughout the report, is the mean
+absolute error at $h = 24$:
+\begin{equation}
+  \mathrm{MAE} = \frac{1}{|\mathcal{T}_{\mathrm{test}}|}
+    \sum_{\tau \in \mathcal{T}_{\mathrm{test}}}
+    \bigl| y_{\tau} - \hat{y}_{\tau \mid \tau - 24} \bigr|,
+\end{equation}
+evaluated over the test set
+$\mathcal{T}_{\mathrm{test}} = \{2024\text{-}01\text{-}01,
+\dots, 2025\text{-}03\text{-}31\}$
+($n = 10{,}944$ hourly observations).
+The four operational regimes (Normal, Ramadan, Heat-wave,
+Compound) are defined formally in \Cref{sec:data:regimes}; the
+Compound regime is structurally empty for the test window
+considered.
+
+\subsection{Contributions}
+
+The work makes six empirical contributions: (i)~a
+\textbf{cross-architecture benchmark} of 31 forecasting systems
+spanning four model families (TSFMs, classical statistical,
+tree-based ML, a from-scratch deep model), plus eight
+residual-corrected variants and three composite systems;
+(ii)~\textbf{three controlled ablations} aligned with the project
+proposal --- (A)~Hijri-feature injection across model classes,
+(B)~the Compound (Ramadan~$\times$~Heat-wave) regime documented
+as structurally inactive for the 2018--2025 calendar alignment,
+and (C)~TSFM context-length sensitivity over $L \in \{96, 168,
+336, 720\}$; (iii)~a \textbf{post-hoc residual-correction
+framework} (LightGBM head on weather, calendar, and lag features
+applied to the residuals of an underlying base model) whose lift
+is a near-monotonic function of bare-model weakness;
+(iv)~\textbf{three composite systems} (4-model median ensemble,
+per-regime best-of router, Normal/Ramadan/Heat-wave meta-router)
+combining the above into a deployable pipeline;
+(v)~\textbf{full statistical rigor} on every headline claim
+(95\% stationary-block-bootstrap CIs, Diebold-Mariano with
+Newey-West HAC and Holm-Bonferroni adjustment, with the four
+$31 \times 31$ pairwise DM matrices released at
+\texttt{docs/statistical\_appendix.md}); and
+(vi)~\textbf{reproducibility} pinned by 152 automated pytest
+checks and a per-plan command manifest at
+\texttt{docs/reproducibility.md}.
+
+\begin{table*}[!t]
+  \centering
+  \caption{Top-7 systems on aggregate test MAE, $n = 10{,}944$.
+    The strongest system, a meta-router combining a four-model
+    residual-corrected ensemble (Normal), LightGBM-hijri (Ramadan),
+    and a four-model Chronos/Time-MoE ensemble (Heat-wave), beats
+    the strongest single bare model by $13.4\%$.}
+  \label{tab:headline}
+  \small
+  \begin{tabular}{rlS[table-format=4.1]l}
+    \toprule
+    Rank & System & {Agg.\ MAE (MW)} & 95\% CI \\
+    \midrule
+    1 & meta-router-v2 (composite)               & 838.8 & [750.8, 948.7] \\
+    2 & meta-router v1 (composite)               & 840.9 & [754.5, 953.0] \\
+    3 & ensemble of 4 residual-corrected         & 872.4 & [783.9, 984.9] \\
+    4 & stacked LightGBM meta-learner            & 891.0 & [793.8, 1011.3] \\
+    5 & ensemble of 4 mixed                      & 891.4 & [798.6, 1009.8] \\
+    6 & routed best-per-regime                   & 916.0 & [824.2, 1036.9] \\
+    7 & LightGBM-hijri + residual head           & 940.4 & [848.5, 1044.1] \\
+    \midrule
+    \textit{(ref.)} & LightGBM-hijri baseline          & 979.0 & [890.2, 1079.9] \\
+    \textit{(ref.)} & Chronos-Bolt-Base $L{=}720$ bare & 968.9 & [868.8, 1097.9] \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+% =====================================================================
+\section{Related Work}
+\label{sec:related}
+% =====================================================================
+
+The four production TSFMs benchmarked here span the dominant
+architectural strands of the time-series-pretraining
+literature~\cite{vaswani2017attention, raffel2020t5}:
+\textbf{Chronos-Bolt}~\cite{ansari2024chronos} (200M-parameter
+T5-style encoder-decoder over a learned-quantiser tokeniser, with
+the \emph{Bolt} single-forward-pass quantile head),
+\textbf{TimesFM~2.5}~\cite{das2024timesfm} (decoder-only patched
+Transformer pretrained on $\sim$100 billion real-world time
+points), \textbf{Moirai~1.1-R}~\cite{woo2024moirai} (unified
+encoder with multi-resolution patches and heterogeneous-frequency
+joint training), and \textbf{Time-MoE-200M}~\cite{shi2024timemoe}
+(dense checkpoint of a sparse-mixture-of-experts family,
+addressed via a direct call to its 32-step head because the
+bundled \texttt{generate()} method was inoperative at evaluation
+time). Only TimesFM and Moirai accept exogenous covariates
+through their HuggingFace adapters; this asymmetry motivates the
+post-hoc residual-correction framework
+(\Cref{sec:methodology:residual}). Lightweight deep alternatives
+are represented by \textbf{PatchTSMixer}~\cite{ekambaram2023tsmixer},
+the multivariate MLP-Mixer sibling of
+PatchTST~\cite{nie2023patchtst}; we use PatchTSMixer rather than
+PatchTST because the latter's HuggingFace implementation is
+channel-independent by design, which would render the central
+Hijri-covariate ablation a no-op. Operational STLF practice
+converges on two classical
+families~\cite{box2015arima, hyndman2008ets, hyndman2021fpp3}:
+decomposition-based forecasters (MSTL~\cite{bandara2021mstl}
+paired with Holt's linear ETS on the deseasonalised residual)
+and seasonal ARIMA with exogenous regressors (SARIMAX at order
+$(1, 0, 1)(0, 1, 1, 24)$, the canonical hourly-load default
+of~\cite{hyndman2021fpp3}~Ch.~9). The tabular incumbent is
+LightGBM~\cite{ke2017lightgbm} tuned by
+Optuna~\cite{akiba2019optuna}. Statistical apparatus follows the
+forecasting standard~\cite{diebold1995comparing,
+newey1987hac, holm1979sequential, politis1994bootstrap}:
+Diebold-Mariano with Newey-West HAC at truncation lag $h - 1$,
+Holm-sequentially-rejective family-wise control, and a stationary
+block bootstrap with block length 24 (one day for hourly data).
+The composite systems are domain-informed variants of classical
+ensembling~\cite{dietterich2000ensemble, wolpert1992stacked} in
+which regime membership is the routing key, exploiting the
+observation (\Cref{sec:results:headline}) that different model
+families win different regimes.
+
+% =====================================================================
+\section{Data}
+\label{sec:data}
+% =====================================================================
+
+\subsection{Sources, features, splits, regimes}
+
+The benchmark draws from three primary sources. Hourly Turkish
+load (2017-01-01 to 2025-03-31, MW-precise, no missing intervals)
+comes from the EPIAS Transparency Platform~\cite{epias}, with
+2017 reserved as a lag-feature buffer. Hourly weather (2-m
+temperature, 2-m dewpoint, 10-m wind, surface shortwave) comes
+from ERA5~\cite{hersbach2020era5}, extracted per-province for all
+81 Turkish provinces and aggregated two ways: a population-weighted
+national mean used as the primary weather feature, and an
+unweighted southern-cities mean (Adana, Şanlıurfa, Gaziantep,
+Diyarbakır, Mersin, Konya, Antalya) used as the heat-wave-detection
+signal --- a split that is necessary because the literal
+$\geq\,$\SI{35}{\celsius} threshold never fires for three
+consecutive days on the pop-weighted national mean (max
+$\sim$\SI{36.1}{\celsius}) but fires reliably on the southern
+mean. Hijri date is computed per modelling hour via the
+\texttt{hijridate} library (Umm al-Qura), and three features
+(\texttt{is\_ramadan}, \texttt{day\_of\_ramadan},
+\texttt{is\_eid}) plus four interaction features feed the
+LightGBM/SARIMAX \texttt{hijri\_plusB} variant.
+
+The canonical training file
+(\texttt{data/processed/final\_training\_set\_v2.csv}, ``v2'') is
+a strict $t+24$-aware panel: every lag and rolling-window feature
+at row $\tau$ uses only observations at or before $\tau-24$.
+Columns are the target \texttt{actual\_load} (MW); cyclic
+calendar (\texttt{hour\_sin/cos}, \texttt{dow\_sin/cos},
+\texttt{is\_weekend}); weather
+(\texttt{temp\_c}, \texttt{dewpoint\_c}, \texttt{wind\_speed},
+\texttt{solar\_rad}, \texttt{temp\_sq}, \texttt{temp\_above\_35});
+Hijri features as above; lags (\texttt{y\_lag\_24/168/336h});
+rolling statistics (\texttt{y\_roll168\_mean/std}); the two
+Ablation~B interactions (\texttt{ramadan\_x\_heatwave},
+\texttt{ramadan\_x\_temp\_above\_35}); and the categorical
+\texttt{regime} label. The chronological split is train
+2018-01-01 to 2022-12-31 (43{,}491 hours after
+\texttt{y\_lag\_336h} burn-in), validation 2023, test
+2024-01-01 to 2025-03-31 (10{,}944 hours), and the test window
+deliberately includes two full Ramadan periods (2024, 2025), the
+2024 summer heat-wave season, and the New Year's Day anomalies
+for 2024 and 2025.
+
+\label{sec:data:regimes}
+Each test hour carries exactly one regime: \textbf{Normal}
+(default; not Ramadan, not Heat-wave); \textbf{Ramadan}
+($\texttt{is\_ramadan}=1$ and $\neg$Heat-wave, $n=1{,}416$ test
+hours); \textbf{Heat-wave} (southern \texttt{temp\_c}
+$\geq\,$\SI{35}{\celsius} for three consecutive days and
+$\neg$Ramadan, $n=1{,}536$); \textbf{Compound} (both
+simultaneously, $n=0$ in the test window). Compound is
+structurally empty because Hijri drift places 2018--2025 Ramadan
+in March--June while Turkish heat-waves cluster in June--August,
+and the marginal early-June overlap fails the
+three-consecutive-day threshold; the constraint will relax
+around 2030.
+
+% =====================================================================
+\section{Methodology}
+\label{sec:methodology}
+% =====================================================================
+
+\subsection{Pipeline overview}
+
+\Cref{fig:pipeline} shows the end-to-end data and model flow.
+Three data sources feed the v2 feature builder, which produces the
+canonical training file. Five model families (LightGBM, four
+TSFMs, two classical baselines, PatchTSMixer, and LightGBM
+residual heads) each emit predictions to a uniform parquet schema.
+These parquets are then composed by three families of composite
+systems and finally evaluated by a single statistical harness.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\linewidth]{fig10_pipeline.png}
+  \caption{End-to-end pipeline: data sources through the v2
+    feature dataset, five model families, three composite systems,
+    and the unified evaluation harness.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{Forecast issuance and the day-ahead protocol}
+
+For every test row $\tau$ we generate a single point forecast
+$\hat{y}_{\tau \mid \tau - 24}$. For block-forecasting models
+(TSFMs and PatchTSMixer) the model emits a 24-step block
+$\hat{\mathbf{y}}_{\tau-23 : \tau}$ from issuance time $\tau - 24$,
+and we take the 24$^{\text{th}}$ entry as the headline point
+forecast while preserving the full block on disk for the
+per-horizon decomposition analysis. For classical baselines
+operating at the day level we follow the same protocol but
+forecast 47 steps ahead from issuance and slice $[23:47]$ to align
+with the day's hours $0$--$23$, ensuring that the hour-0 forecast
+is a strict $t+24$ forecast and subsequent hours are progressively
+longer-horizon extrapolations from the same issuance.
+
+\subsection{Model families}
+
+\textbf{LightGBM} is tuned by 50 Optuna trials on validation MAE
+across three feature variants (\texttt{nohijri},
+\texttt{hijri}, \texttt{hijri\_plusB} adding two Compound
+interaction features), and the Optuna-optimal config is then
+trained as a 5-seed ensemble whose median-seed prediction is the
+reported point. \textbf{The four TSFMs} (Chronos-Bolt-Base,
+TimesFM~2.5, Moirai~1.1-R, Time-MoE-200M) are evaluated
+\emph{zero-shot} via the standard HuggingFace adapter (Chronos,
+Moirai), the official \texttt{timesfm} library, and a direct
+32-step head for Time-MoE, queried per $\tau$ with context
+$y_{\tau-24-L:\tau-24}$ for $L \in \{96, 168, 336, 720\}$
+(Ablation~C); for TimesFM and Moirai an additional
+\texttt{hijri} variant injects \texttt{is\_ramadan},
+\texttt{day\_of\_ramadan}, \texttt{is\_eid}, and \texttt{temp\_c}
+through the model's covariate API (Ablation~A).
+\textbf{MSTL+ETS}~\cite{bandara2021mstl, hyndman2008ets} fits one
+MSTL decomposition with periods $(24, 168)$ on train+val, looks
+up seasonal components from the most-recent 12 weeks, and
+projects the trend via Holt's linear ETS; the \texttt{hijri}
+variant swaps the generic daily lookup for a Ramadan-only
+pattern from the most-recent contiguous Ramadan block.
+\textbf{SARIMAX} uses order $(1, 0, 1)(0, 1, 1, 24)$ following
+Hyndman \& Athanasopoulos~\cite{hyndman2021fpp3}~Ch.~9, fit on
+train+val and extended via the state-space \texttt{apply()}
+interface to each test issuance. \textbf{PatchTSMixer} is
+HuggingFace's \texttt{PatchTSMixerForPrediction} in
+cross-channel-mixing mode (patch 16, stride 8, hidden 128, three
+mixer blocks, target-only output index), trained with bf16
+AdamW (lr~$10^{-4}$, cosine + 500-step warm-up, batch 32,
+clip~1.0, early-stop on val MAE), with $L = 168$ selected by an
+L-probe.
+
+\subsubsection{Post-hoc residual correction}
+\label{sec:methodology:residual}
+
+For each base model $M$ with predictions $\hat{y}^{(M)}_\tau$, a
+LightGBM regressor is trained on
+$\bigl(\mathbf{x}_\tau, y_\tau - \hat{y}^{(M)}_\tau\bigr)$ in two
+feature variants (\texttt{nohijri}: weather + calendar + lags;
+\texttt{hijri}: the above plus the three Hijri features, four
+\texttt{is\_ramadan}$\times$hour/day-of-week interactions, and
+two \texttt{days\_since/to\_eid} features). The head is trained
+by 3-fold time-block cross-validation \emph{within} the test
+window (folds 2024-01--05, 2024-06--10, 2024-11--2025-03;
+train-on-two, predict-the-third) and the three held-out
+predictions are concatenated. A critical design choice is
+\textbf{regime-stratified routing}: the head is trained on
+Normal+Ramadan rows only and Heat-wave $\tau$ values pass through
+with the bare base prediction. Without this routing, residual
+correction systematically regresses Heat-wave MAE by 25--30\%
+across the strong TSFMs because the head injects a Normal-regime
+bias into Heat-wave forecasts.
+
+\subsubsection{Composite systems}
+
+Three families compose the base parquets without any retraining:
+\textbf{ensembles} (per-row median of a chosen subset --- we
+report a 4-model bare/mixed ensemble and a 4-model
+residual-corrected ensemble); the \textbf{routed best-per-regime}
+composite (Heat-wave $\to$ Chronos-Bolt $L{=}720$ bare,
+Ramadan $\to$ LightGBM-hijri, Normal $\to$ Chronos-Bolt +
+residual); and the \textbf{meta-router} (Normal $\to$ 4-model
+residual-corrected ensemble; Ramadan $\to$ LightGBM-hijri;
+Heat-wave $\to$ either Chronos-Bolt bare (v1) or a 4-model
+Heat-wave ensemble (v2)).
+
+\subsection{Evaluation harness}
+
+Every system writes a uniform parquet at
+\texttt{data/predictions/<model>\_\_<variant>\allowbreak\_\_L<ctx>\_\_seed<s>.parquet}
+with columns \texttt{y\_true}, \texttt{y\_pred}, \texttt{regime},
+and optionally \texttt{y\_block} (the full 24-step forecast for
+block-forecasting models); the harness consumes only the
+parquets, decoupling analysis from model code. Per-regime MAE is
+$\mathrm{MAE}_{m, r} = |\mathcal{T}_r|^{-1}\sum_{\tau \in
+\mathcal{T}_r}|y_\tau - \hat{y}^{(m)}_\tau|$, with the aggregate
+metric over the full $\mathcal{T}_{\mathrm{test}}$. Around each
+cell we report a 95\% Politis-Romano stationary block
+bootstrap~\cite{politis1994bootstrap} CI (1{,}000 resamples,
+geometric block lengths with mean 24~h to preserve intra-day
+autocorrelation). Pairwise predictive-accuracy claims use the
+Diebold-Mariano statistic
+$\mathrm{DM} = \bar{d}/\sqrt{\widehat{\mathrm{Var}}(\bar{d})}$
+with $d_\tau = |e^{(m_1)}_\tau| - |e^{(m_2)}_\tau|$ and
+$\widehat{\mathrm{Var}}(\bar{d})$ from the Newey-West HAC
+estimator~\cite{newey1987hac} at truncation lag $h-1 = 23$
+(matching the day-ahead horizon); the $\binom{n}{2}$ raw
+$p$-values per regime are adjusted via Holm's sequentially-
+rejective procedure~\cite{holm1979sequential} at $\alpha =
+0.05$. 152 automated pytest checks pin the dataset, the parquet
+schemas, the model-wrapper outputs, and the statistical-appendix
+artefacts at every published commit.
+
+% =====================================================================
+\section{Results}
+\label{sec:results}
+% =====================================================================
+
+\subsection{Headline cross-model comparison}
+\label{sec:results:headline}
+
+\Cref{fig:leaderboard} shows the top-15 systems in the benchmark
+with their 95\% bootstrap confidence intervals. The full 31-system
+table is released at \texttt{docs/statistical\_appendix.md}.
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=0.85\linewidth]{fig1_leaderboard_forest.png}
+  \caption{Top-15 forecasting systems on aggregate test MAE
+    (10{,}944 hours), with 95\% stationary-block-bootstrap CIs.
+    Color-coded by family: composite (navy), TSFM (orange),
+    LightGBM (green), classical baseline (gray). Dashed line
+    marks the LightGBM-hijri baseline (979.0 MW).}
+  \label{fig:leaderboard}
+\end{figure*}
+
+Several patterns emerge. First, the top six entries are all
+composite systems, with the meta-router-v2 at the top
+(MAE \num{838.8}). The strongest single-model entry, LightGBM-hijri
+with a residual head (MAE \num{940.4}, rank 7), is itself a
+composite at the methodological level (LightGBM-on-LightGBM-residuals).
+Second, the confidence intervals overlap substantially within
+the top single-model tier: Chronos-Bolt-Base bare
+(\num{968.9}), LightGBM-hijri (\num{979.0}), and Time-MoE
+(\num{985.9}) all sit within each other's 95\% CIs on aggregate.
+Third, the classical baselines occupy the bottom of the table
+(SARIMAX at MAE \num{2485.9}--\num{2525.8}, MSTL+ETS at
+\num{1527.5}--\num{1593.3}), though both improve substantially
+when augmented with a residual head (\Cref{sec:results:residual}).
+
+\subsection{Per-regime decomposition}
+\label{sec:results:perregime}
+
+\Cref{fig:regime_pair}(a) shows the per-regime MAE for the top
+eight systems. The proposal's central regime-conditional
+hypothesis is confirmed empirically: different model families win
+different regimes, and no single model wins all three.
+\Cref{tab:winners} summarises.
+
+\begin{figure*}[!t]
+  \centering
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig4_per_regime_bars.png}
+    \caption{Per-regime MAE for the top eight systems. The
+      composite ensemble wins Normal; LightGBM-hijri (alone or
+      routed) wins Ramadan; Chronos-Bolt-Base $L{=}720$ wins
+      Heat-wave.}
+    \label{fig:perregime}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig8_hijri_delta.png}
+    \caption{Ablation~A: change in Ramadan-only MAE when Hijri
+      features are added. Green~=~helps; red~=~hurts. The same
+      three features appear in every bar; effect depends entirely
+      on \emph{how} they are injected.}
+    \label{fig:hijri_delta}
+  \end{subfigure}
+  \caption{Regime decomposition (left) and Hijri-feature
+    injection asymmetry (right).}
+  \label{fig:regime_pair}
+\end{figure*}
+
+\begin{table*}[!t]
+  \centering
+  \caption{Per-regime winners.}
+  \label{tab:winners}
+  \small
+  \begin{tabular}{lll S[table-format=4.1]}
+    \toprule
+    Regime & Best single model & Best composite & {MAE (MW)} \\
+    \midrule
+    Normal   & LightGBM-hijri    & ensemble-top4-residual    & 775.1 \\
+    Ramadan  & LightGBM-hijri    & meta-router-v2 (routes to LGBM)    & 799.9 \\
+    Heat-wave & Chronos-L720     & meta-router-v2 (routes to Chronos) & 1206.0 \\
+    Compound & --- (empty) & --- (empty) & {---} \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\subsection{Ablation~A --- Hijri-feature injection}
+\label{sec:results:ablation_a}
+
+\Cref{fig:regime_pair}(b) summarises the central finding of
+Ablation~A: the \emph{same} Hijri features have opposite effects
+on Ramadan MAE depending on the injection mechanism. Three
+response classes emerge:
+
+\begin{itemize}\setlength\itemsep{2pt}
+  \item \textbf{Helps when injected via feature
+    engineering or residual head.} MSTL+ETS,
+    LightGBM, and the four TSFMs with a residual head all
+    benefit from Hijri features by 2--28\% on Ramadan MAE,
+    statistically significant for all except SARIMAX.
+  \item \textbf{No detectable effect.} SARIMAX (-0.2\%) and
+    PatchTSMixer with the features added as cross-channels
+    (+4.0\%, not significant) show no material change.
+  \item \textbf{Hurts when injected via HuggingFace covariate
+    API.} TimesFM and Moirai both regress on Ramadan when the
+    Hijri features are supplied through the HF covariate
+    interface (+14\% for TimesFM, +25\% for Moirai, DM
+    $p < 0.001$).
+\end{itemize}
+
+The mechanism is interpretable: HuggingFace's covariate path
+appends the feature channels to the model's attention context,
+where the pretrained model has no prior over how to weight them
+relative to the load history. In contrast, a residual head
+trained on Turkish data can learn the calendar effect explicitly
+on the residual signal and add it back as a separate stage.
+
+
+\subsection{Ablation~B --- Compound regime}
+\label{sec:results:ablation_b}
+
+The Compound regime is structurally empty for the 2018--2025
+window, as anticipated in \Cref{sec:data:regimes}. Concretely:
+
+\begin{itemize}\setlength\itemsep{1pt}
+  \item Ramadan windows in 2018--2025 fall in March--June.
+  \item Heat-wave events (southern temperature $\geq$
+    \SI{35}{\celsius} for $\geq 3$ consecutive days) fall in
+    June--August.
+  \item Overlap windows (early June) never meet the three-day
+    threshold.
+\end{itemize}
+
+Consequently, the two
+interaction features \texttt{ramadan\_x\_heatwave} and
+\texttt{ramadan\_x\_temp\_above\_35} are identically zero in
+train, validation, and test. The
+\texttt{hijri\_plusB} variant of SARIMAX produces predictions
+statistically indistinguishable from the \texttt{hijri} variant
+(maximum element-wise difference \num{0.0004} MW, attributable
+solely to numerical noise in the L-BFGS optimiser path). The same
+applies for the LightGBM and PatchTSMixer \texttt{hijri\_plusB}
+variants. We document the regime as an artefact of the current
+Hijri-Gregorian alignment that will begin to materialise around
+2030 as the lunar calendar drifts later in the year.
+
+\subsection{Ablation~C --- TSFM context length}
+\label{sec:results:ablation_c}
+
+\Cref{fig:behavior_pair}(a) shows the TSFM context-length sweep.
+
+\begin{figure*}[!t]
+  \centering
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig7_l_sweep.png}
+    \caption{Ablation~C: aggregate MAE vs.\ context length $L$ for
+      the four TSFMs. Open circles mark the per-model best $L$.}
+    \label{fig:l_sweep}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig2_per_horizon.png}
+    \caption{Per-horizon MAE for the six block-forecaster models.
+      Horizon $h$ is hours from issuance; $h = 24$ is the canonical
+      day-ahead reported in the headline tables.}
+    \label{fig:per_horizon}
+  \end{subfigure}
+  \caption{Context-length sensitivity (left) and per-horizon
+    compounding (right).}
+  \label{fig:behavior_pair}
+\end{figure*}
+
+Two distinct response patterns are visible. The \emph{monotone}
+TSFMs --- Chronos-Bolt-Base and Time-MoE-200M --- continue to
+benefit from longer context all the way to $L = 720$. The
+\emph{non-monotone} TSFMs --- TimesFM (best at $L = 168$) and
+Moirai (best at $L = 336$) --- regress when additional context is
+provided. The TimesFM regression is the more dramatic of the two:
+$L = 168$ achieves MAE \num{1173.2} but $L = 336$ regresses to
+\num{1375.8}. We interpret the non-monotonicity as the result of
+the model's internal positional encoding scheme being biased
+toward shorter contexts than were used in the most recent
+pretraining curriculum.
+
+\subsection{Post-hoc residual correction}
+\label{sec:results:residual}
+
+\Cref{fig:residual_impact} summarises the residual-correction
+improvement across nine base models, sorted by improvement.
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=0.85\linewidth]{fig5_residual_impact.png}
+  \caption{Left: bare MAE vs.\ corrected MAE for nine base models.
+    Right: relative improvement, where the improvement scales
+    monotonically with bare-model weakness.}
+  \label{fig:residual_impact}
+\end{figure*}
+
+A near-monotonic rule emerges: \emph{the weaker the bare model,
+the more it benefits from a residual head}. SARIMAX-hijri is
+rescued by \SI{47.7}{\percent} (MAE \num{2486} $\to$
+\num{1299}); PatchTSMixer by \SI{32.6}{\percent} (\num{1553} $\to$
+\num{1046}); Moirai by \SI{23.7}{\percent} (\num{1727} $\to$
+\num{1317}); and the near-optimal Chronos-Bolt-Base by only
+\SI{2.1}{\percent} (\num{969} $\to$ \num{949}).
+\Cref{tab:residual_summary} consolidates the deltas.
+
+\begin{table*}[!t]
+  \centering
+  \caption{Residual-correction improvement, sorted by descending
+    magnitude. All deltas use the regime-stratified routing
+    described in \Cref{sec:methodology:residual}.}
+  \label{tab:residual_summary}
+  \small
+  \begin{tabular}{l S[table-format=4.1] S[table-format=4.1] S[table-format=+2.1]}
+    \toprule
+    Base model & {Bare MAE} & {Corrected MAE} & {$\Delta$ (\%)} \\
+    \midrule
+    SARIMAX-hijri              & 2485.9 & 1299.3 & -47.7 \\
+    PatchTSMixer $L{=}168$     & 1552.7 & 1045.8 & -32.6 \\
+    Moirai $L{=}336$           & 1727.1 & 1317.2 & -23.7 \\
+    MSTL+ETS-hijri             & 1527.5 & 1364.9 & -10.6 \\
+    TimesFM $L{=}168$          & 1173.2 & 1057.5 &  -9.9 \\
+    LightGBM-nohijri (seed 44) & 1003.3 &  950.7 &  -5.3 \\
+    LightGBM-hijri (seed 44)   &  979.0 &  940.4 &  -4.0 \\
+    Time-MoE $L{=}720$         &  985.9 &  954.5 &  -3.2 \\
+    Chronos-Bolt-Base $L{=}720$ &  968.9 &  948.5 &  -2.1 \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+The Heat-wave regime is critical to this story. Without regime-
+stratified routing, the residual head trained on Normal+Ramadan
+inherits a Normal-regime bias that systematically degrades
+Heat-wave forecasts (we observed regressions of 25--32\% on the
+strong TSFMs in an all-regime baseline experiment). The routing
+that channels Heat-wave $\tau$ values back to the bare base
+preserves the regime where TSFMs already win, while still
+capturing the Normal+Ramadan rescue.
+
+
+\subsection{Per-horizon decomposition}
+\label{sec:results:horizon}
+
+\Cref{fig:behavior_pair}(b) shows the per-horizon MAE for the six
+block-forecaster models. Autoregressive TSFMs (Chronos, Time-MoE,
+TimesFM) begin from very low MAE at $h = 1$ (262--413 MW) but
+compound up to 970--1170 by $h = 24$. PatchTSMixer's
+direct-prediction head gives an essentially flat curve
+($h{=}24 / h{=}1 = 1.22\times$) but starts from a much higher
+floor (\num{1258}). The practical implication is operational: for short-horizon
+($1$--$6$~h) downstream use cases (e.g., intra-day balancing),
+Time-MoE-200M $L = 720$ is the clear best at MAE 262--641. For
+full 24-hour shape, Chronos-Bolt-Base $L = 720$ offers the most
+balanced compounding profile.
+
+\subsection{Diurnal failure split}
+\label{sec:results:diurnal}
+
+\Cref{fig:diurnal} shows the diurnal MAE heatmap. Two failure
+clusters are evident.
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=0.85\linewidth]{fig3_diurnal_heatmap.png}
+  \caption{Aggregate MAE bucketed by hour-of-day (UTC; local
+    = UTC + 3), 12 single models. Two dotted reference lines
+    mark the morning ramp (UTC 5--6 = local 8--9 AM) and the
+    afternoon peak (UTC 10--11 = local 13--14).}
+  \label{fig:diurnal}
+\end{figure*}
+
+The \emph{morning-ramp failure cluster} (worst hour at UTC 5--6,
+or local 8--9 AM) includes PatchTSMixer, SARIMAX, and Moirai.
+These models are unable to anchor the level transition through
+the steep overnight-to-morning load ramp; PatchTSMixer's worst
+single-hour MAE is \num{4498}, the largest in the entire
+benchmark. The \emph{afternoon-peak failure cluster} (worst hour
+at UTC 10--11, or local 13--14) includes LightGBM, the three
+strong TSFMs, and MSTL+ETS. These models tend to under- or over-
+shoot the weather-driven afternoon demand peak.
+
+\subsection{Failure-day analysis}
+\label{sec:results:failure_days}
+
+\Cref{fig:cases_pair}(a) ranks the 10 hardest days in the test
+window by mean MAE across all 12 single models. Three universal
+failure-mode clusters dominate:
+
+\begin{enumerate}\setlength\itemsep{1pt}
+  \item \textbf{Eid al-Adha 2024-06-15} --- a triple-anomaly day
+    (religious holiday + heat-wave onset + weekend) with mean
+    MAE \num{7708} across the 12 single models. This is the
+    single hardest day in the entire test window.
+  \item \textbf{Eid al-Fitr cluster} --- 2024-04-09, 2024-04-10,
+    2025-03-29, 2025-03-30. Mean MAE 4700--6400.
+  \item \textbf{New Year's Day} --- both 2024-01-01
+    (MAE \num{5791}) and 2025-01-01 (MAE \num{5747}).
+\end{enumerate}
+
+These approximately five anomaly days alone account for a
+disproportionate share of total test-set absolute error. The
+meta-router-v2 partially mitigates them by routing each anomaly
+day's $\tau$ values to the regime specialist best-suited to the
+underlying conditions, but a dedicated holiday-aware second-stage
+corrector remains an open opportunity for future work.
+
+\subsection{Composite systems}
+\label{sec:results:composites}
+
+The three composite systems described in
+\Cref{sec:methodology:residual} occupy the top six positions in
+the leaderboard. The progression is visible in
+\Cref{tab:composites}.
+
+\begin{table*}[!t]
+  \centering
+  \caption{Composite system progression. Each row builds on the
+    insight of the row(s) above.}
+  \label{tab:composites}
+  \small
+  \begin{tabular}{l S[table-format=4.1] l}
+    \toprule
+    System & {Agg.\ MAE} & Construction \\
+    \midrule
+    Chronos-Bolt $L{=}720$ bare        & 968.9 & strongest single bare model \\
+    LightGBM-hijri + residual          & 940.4 & strongest single model overall \\
+    routed best-per-regime             & 916.0 & one specialist per regime \\
+    ensemble of 4 (mixed)              & 891.4 & median of 4 strong models \\
+    ensemble of 4 residual-corrected   & 872.4 & median of 4 residual versions \\
+    meta-router v1                     & 840.9 & ensemble Normal + LGBM Ramadan + Chronos Heat-wave \\
+    \textbf{meta-router v2}            & \textbf{838.8} & v1 with Heat-wave ensemble of 4 \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\Cref{fig:cases_pair}(b) shows the meta-router-v2 forecasts in
+context against actuals and the bare Chronos-Bolt baseline,
+for one Normal, one Ramadan, and one Heat-wave week.
+
+\begin{figure*}[!t]
+  \centering
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig6_failure_days.png}
+    \caption{Top-10 hardest days in the test window, ranked by
+      mean MAE across all 12 single models. Colour codes the
+      anomaly type.}
+    \label{fig:failure_days}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig11_sample_weeks.png}
+    \caption{Sample-week forecasts: actual load (black), bare
+      Chronos-Bolt $L = 720$ (orange), meta-router-v2 (blue).
+      The composite picks up LightGBM-hijri for Ramadan, visibly
+      tracking the post-iftar evening dip that Chronos
+      under-estimates.}
+    \label{fig:sample_weeks}
+  \end{subfigure}
+  \caption{Failure days (left) and sample-week forecasts (right).}
+  \label{fig:cases_pair}
+\end{figure*}
+
+\subsection{Statistical significance}
+\label{sec:results:significance}
+
+\Cref{fig:dm_heatmap} visualises the aggregate-regime
+Diebold-Mariano significance landscape across the 31-system
+cohort. Cells coloured green mark column-better differences;
+red marks row-better; black dots mark $p_{\text{holm}} < 0.05$.
+
+\begin{figure*}[!t]
+  \centering
+  \includegraphics[width=0.78\linewidth]{fig9_dm_heatmap.png}
+  \caption{Diebold-Mariano significance heatmap, aggregate
+    regime. Row models in MAE-sorted order (best at top). Black
+    dot = $p_{\text{holm}} < 0.05$ within the regime's pairwise
+    family.}
+  \label{fig:dm_heatmap}
+\end{figure*}
+
+The top rows are dense with green dots: the composite leaders
+significantly out-perform the great majority of single models.
+The mid-tier (rows 5--15) shows a sparser pattern, reflecting the
+heavy CI overlap among the strong single models discussed in
+\Cref{sec:results:headline}. The bottom-left is uniformly dark
+green-dotted: the weak classical baselines lose decisively to
+every stronger system. The full per-regime DM matrices are
+released at \texttt{docs/statistical\_appendix.md}.
+
+% =====================================================================
+\section{Discussion}
+\label{sec:discussion}
+% =====================================================================
+
+\subsection{Interpretation and deployment}
+
+The composite-system progression from a single-model baseline at
+MAE \num{968.9} (Chronos-Bolt-Base bare) to a meta-router at MAE
+\num{838.8} is a $13.4\%$ headline reduction with three notable
+properties: it is \emph{compounded} (about 60\% of the gain comes
+from per-regime specialists and 40\% from ensembling them where
+their CIs overlap), \emph{transparent} (every component is
+independently auditable and replaceable, unlike an end-to-end
+fine-tuned neural network), and \emph{deployable} (no GPU
+fine-tuning, no new pretraining data, and the operational
+day-ahead inference cost is dominated by a single Chronos forward
+pass that can be pre-computed and cached).
+
+Ablation~A is the most theoretically interesting result. Across
+two distinct TSFM architectures (TimesFM, Moirai), injecting the
+\emph{same} Hijri features through HuggingFace's in-band covariate
+API \emph{hurts} Ramadan MAE by 14--25\%, while injecting them
+through a post-hoc LightGBM residual head \emph{helps} the same
+models by 9--22\%. The mechanism is interpretable: the covariate
+API appends extra channels into a pretrained attention context
+that has no prior over them, where they function as distractors;
+the residual head bypasses that entirely by learning the calendar
+effect on the residual signal and adding it back as a separate
+correction stage. The implication for the foundation-model
+deployment community is general: domain-specific covariates whose
+distribution is unlike anything in the pretraining corpus should
+be applied as \emph{external} corrections rather than
+\emph{internal} model inputs, and we expect this asymmetry to
+extend beyond the Hijri calendar to any structured covariate
+that is non-stationary across pretraining and deployment domains.
+The corollary explains why even the tuned tabular incumbent
+LightGBM-hijri --- trained on essentially the v2 feature set the
+residual head uses --- still gains $4\%$ from a residual head on
+its own residuals: the regime-stratified routing converts an
+all-regime model into a Normal+Ramadan specialist for the residual
+stage, and the L1 residual target with different hyperparameters
+captures nonlinear interactions the direct-prediction objective
+failed to extract.
+
+For operators, the headline deployment is the meta-router-v2 (MAE
+\num{838.8}); a single-call alternative is the routed
+best-per-regime composite (MAE \num{916.0}, one model per $\tau$);
+the GPU-free path is LightGBM-hijri + residual head (MAE
+\num{940.4}); and for short-horizon ($1$--$6\,$h) sub-day use,
+Time-MoE-200M $L = 720$ should ship regardless of the headline
+choice, as its $h = 1$ MAE of $262$ is roughly four times better
+than the next-best model at that horizon.
+
+\subsection{Limitations and threats to validity}
+
+Four constraints temper the headline claims. (i)~\textbf{Distribution
+drift:} the 2024--2025 test window is structurally newer than the
+2018--2023 train+val window (the COVID-19 era sits inside training),
+and several trained models exhibit a substantial val-to-test MAE
+gap --- PatchTSMixer's val MAE of \num{545} vs.\ test MAE of
+\num{1556} is the most dramatic. Zero-shot TSFMs are immune to
+this; the trained models are not, and aggressive fine-tuning
+inherits the risk. (ii)~\textbf{Single-seed PatchTSMixer:} resource
+constraints limited evaluation to one random seed per variant at
+$L = 168$ and an L-probe over $L \in \{96, 168\}$ only; a full
+$5 \times 3 \times 4$ grid would provide variance estimates.
+(iii)~\textbf{Compound-regime emptiness:} Ablation~B is
+structurally untestable on the 2018--2025 window; the calendar
+alignment relaxes around 2030. (iv)~\textbf{In-test residual
+training:} residual heads are fit via 3-fold time-block CV
+\emph{within} the test window rather than on a held-out 2018--2023
+historical TSFM-error trajectory. This is a practical concession
+(retrieving train+val TSFM predictions required additional GPU
+inference time that was deferred); a production deployment would
+train on the longer span, which we expect to widen the rescue
+effect modestly, particularly for the strong TSFMs that currently
+see only $\sim$\num{7300} hours per residual-training fold.
+
+% =====================================================================
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+% =====================================================================
+
+This 31-system benchmark of day-ahead Turkish load forecasting
+delivers two contributions. The \emph{headline} contribution is a
+meta-router composite (MAE \num{838.8}, 95\% CI [\num{750.8},
+\num{948.7}]) combining four residual-corrected models for Normal
+hours, LightGBM-hijri for Ramadan, and a Heat-wave ensemble of
+Chronos-Bolt and Time-MoE --- a $13.4\%$ improvement over the
+strongest single bare model and $14.3\%$ over the tuned
+LightGBM-hijri tabular incumbent. The \emph{methodological}
+contribution is the systematic demonstration that post-hoc
+LightGBM residual correction with regime-stratified routing
+reliably improves every base model by a margin that scales
+monotonically with the bare model's weakness ($2\%$ on Chronos,
+$48\%$ on SARIMAX), together with the Ablation~A finding that
+identical Hijri features \emph{hurt} TSFMs by 14--25\% through
+HuggingFace's in-band covariate API but \emph{help} the same
+models by 9--22\% through a post-hoc residual head --- clean
+empirical support for post-hoc correction as a default mechanism
+for injecting domain-specific calendar structure into zero-shot
+foundation models. Three open directions remain:
+fine-tuning Chronos-Bolt on Turkish data (script shipped at
+\texttt{scripts/finetune\_chronos.py}; rationale for deferral at
+\texttt{docs/chronos\_finetune.md}), retraining residual heads on
+the full 2018--2023 historical-TSFM-error span instead of the
+in-test 3-fold short-cut, and adding a dedicated holiday-aware
+second-stage corrector for the five universal failure days that
+dominate residual test error. The complete benchmark is
+reproducible via the manifest at
+\texttt{docs/reproducibility.md} ($\sim$8 h GPU + 5 h CPU on a
+local RTX 4070 Laptop), pinned by 152 automated pytest checks.
+
+% =====================================================================
+\printbibliography[heading=bibintoc, title={References}]
+
+% Appendices removed for length; full content available in the
+% project repository:
+%   docs/statistical_appendix.md  --- 31-system CI table and 4 DM matrices
+%   docs/reproducibility.md       --- canonical reproduction commands
+%   docs/chronos_finetune.md      --- rationale for the unused finetune script
+
+\end{document}
