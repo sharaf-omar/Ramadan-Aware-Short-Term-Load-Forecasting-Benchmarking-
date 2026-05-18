@@ -72,3 +72,9 @@ texput.log
 # Generated presentation PDF (regenerate via `npm run export:pdf`)
 /presentation.pdf
 /presentation/presentation.pdf
+
+# Local video assets — hosted as GitHub release assets, never in git
+*.mp4
+*.mov
+*.webm
+*.mkv

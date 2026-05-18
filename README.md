@@ -9,6 +9,16 @@ Eid) and extreme-heat regimes. Every claim in the result docs is backed by
 a parquet on disk, a 95% block-bootstrap CI, and a Diebold-Mariano test
 with Holm-Bonferroni multiple-comparison adjustment.
 
+## Demo
+
+A 2:49 animated walkthrough of the 14-slide IBM Carbon-style React presentation accompanying this work:
+
+<video src="https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4" controls width="100%"></video>
+
+[Download the video](https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4) ·
+[Run the deck locally](presentation/README.md) ·
+[Read the compiled report](report/main.tex)
+
 ## Headline result
 
 The champion entry — **meta-router-v2** — combines four post-hoc-residual-
