@@ -127,3 +127,29 @@ def test_statistical_appendix_csv_exists(name):
     )
     df = pd.read_csv(p)
     assert len(df) > 0
+
+
+# Plan 6: post-hoc LightGBM residual heads on the 4 TSFMs.
+RESIDUAL_RUNS = [
+    ("chronos_bolt_base", 720),
+    ("moirai_1_1_small", 336),
+    ("timesfm_2_5",       168),
+    ("time_moe_200m",     720),
+]
+
+
+@pytest.mark.parametrize("tsfm_name,L", RESIDUAL_RUNS)
+@pytest.mark.parametrize("variant", ["nohijri", "hijri"])
+def test_residual_prediction_exists(tsfm_name, L, variant):
+    p = PRED_DIR / f"{tsfm_name}__residual__{variant}__L{L}__seed0.parquet"
+    assert p.exists(), (
+        f"Missing {p}. Re-run "
+        f"scripts/run_residual.py --tsfm-parquet "
+        f"{tsfm_name}__nohijri__L{L}__seed0.parquet "
+        f"--tsfm-name {tsfm_name} --context-length {L} "
+        f"--variant {variant} --seed 0."
+    )
+    df = pd.read_parquet(p)
+    assert {"y_true", "y_pred", "regime"} <= set(df.columns)
+    assert df["y_pred"].notna().all()
+    assert len(df) > 5000

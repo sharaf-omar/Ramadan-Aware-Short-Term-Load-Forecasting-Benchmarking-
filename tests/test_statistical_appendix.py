@@ -47,8 +47,9 @@ def test_load_predictions_intersects_on_tau(tmp_path, monkeypatch):
     assert out["model_a"].index.equals(out["model_b"].index)
 
 
-def test_models_constant_has_12_entries():
-    assert len(MODELS) == 12
+def test_models_constant_has_expected_shape():
+    # Expanded over time: 12 (Plan 7a) -> 20 (after Plan 6 residual heads).
+    assert len(MODELS) >= 12
     for entry in MODELS:
         assert len(entry) == 2
         assert entry[1].endswith(".parquet")
