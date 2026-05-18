@@ -40,6 +40,10 @@ MODELS: list[tuple[str, str]] = [
     ("timesfm-L168+res-h",        "timesfm_2_5__residual__hijri__L168__seed0.parquet"),
     ("time-moe-L720+res-nh",      "time_moe_200m__residual__nohijri__L720__seed0.parquet"),
     ("time-moe-L720+res-h",       "time_moe_200m__residual__hijri__L720__seed0.parquet"),
+    # Tier-1 quick-win artifacts: ensemble + PatchTSMixer+residual + regime-routed best-of.
+    ("patchtsmixer-L168+res-h",   "patchtsmixer__residual__hijri__L168__seed42.parquet"),
+    ("ensemble-top4-median",      "ensemble__top4__seed0.parquet"),
+    ("routed-best-per-regime",    "routed__best_per_regime__seed0.parquet"),
 ]
 
 REGIMES = ["aggregate", "Normal", "Ramadan", "Heatwave"]
