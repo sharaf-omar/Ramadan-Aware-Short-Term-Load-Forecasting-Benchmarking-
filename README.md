@@ -16,8 +16,10 @@ A 2:49 animated walkthrough of the 14-slide IBM Carbon-style React presentation 
 <video src="https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4" controls width="100%"></video>
 
 [Download the video](https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4) ·
-[Run the deck locally](presentation/README.md) ·
-[Read the compiled report](report/main.tex)
+[Open the live deck](deck/index.html) ·
+[Reference page (presentation.html)](presentation.html) ·
+[Read the compiled report PDF](Beyond-Blackouts.pdf) ·
+[Run the deck from source](presentation/README.md)
 
 ## Headline result
 

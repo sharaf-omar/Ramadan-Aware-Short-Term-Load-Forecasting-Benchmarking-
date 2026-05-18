@@ -66,9 +66,6 @@ texput.log
 /draft*.pdf
 /main.pdf
 
-# Stale duplicate of presentation/ from a manual snapshot
-/PRES/
-
 # Generated presentation PDF (regenerate via `npm run export:pdf`)
 /presentation.pdf
 /presentation/presentation.pdf
@@ -78,3 +75,7 @@ texput.log
 *.mov
 *.webm
 *.mkv
+
+# Junk drawer — local-only stash for old drafts, snapshots, logs.
+# Whitelist anything inside that should be tracked via `git add -f`.
+docs/rand/
