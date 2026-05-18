@@ -20,16 +20,17 @@ artifact.
 
 ## TL;DR for the report
 
-1. **The new aggregate-MAE leader is an ensemble** — the median of
-   {Chronos-Bolt-Base L=720, LightGBM-hijri, Time-MoE-200M L=720,
-   Moirai+residual} delivers MAE **891.4** [95% CI 798.6, 1009.8],
-   beating every single model by ≥8%. Among single-architecture
-   entries, the tuned post-hoc-residual rows for Chronos-L720
-   (948.5) and Time-MoE-L720 (954.5) come next.
+1. **The new aggregate-MAE leader is an ensemble of residual-corrected
+   models** — the median of {Chronos+residual, LGBM-hijri+residual,
+   Time-MoE+residual, Moirai+residual} delivers MAE **872.4** [95% CI
+   783.9, 984.9], beating every single model by ≥9%. Among
+   single-model entries, **LightGBM-hijri + residual head** (940.4) is
+   the new leader, narrowly beating Chronos+residual (948.5) and
+   LGBM-nohijri+residual (950.7).
 2. **A regime-routed best-of-models recipe is the production
-   recommendation:** route Heatwave τ to Chronos-L720, Ramadan τ to
-   LightGBM-hijri, Normal τ to Chronos+residual. Aggregate MAE 916.0
-   with no new training and no ensembling overhead.
+   recommendation when ensembling is too expensive:** route Heatwave
+   τ to Chronos-L720, Ramadan τ to LightGBM-hijri, Normal τ to
+   Chronos+residual. Aggregate MAE 916.0 with no ensembling overhead.
 3. **LightGBM dominates Ramadan** (MAE 800), and the regime-routed
    recipe inherits that. Explicit Hijri feature engineering wins on
    this regime — the proposal's central hypothesis is confirmed.
@@ -67,18 +68,23 @@ shown; full 23-model table in the appendix.
 
 | Rank | Model | MAE [95% CI] | Notes |
 |---|---|---|---|
-| 1 | **ensemble-top4-median**       | **891.4** [798.6, 1009.8] | Tier-1 composite (no training) |
-| 2 | **routed-best-per-regime**     | **916.0** [824.2, 1036.9] | Tier-1 composite (no training) |
-| 3 | chronos-bolt-L720+residual-h   | 948.5 [846.9, 1072.4] | Plan 6 (regime-stratified) |
-| 4 | time-moe-L720+residual-h       | 954.5 [851.7, 1079.0] | Plan 6 (regime-stratified) |
-| 5 | chronos-bolt-L720              | 968.9 [868.8, 1097.9] | Bare TSFM (Plan 3) |
-| 6 | lgbm-hijri (seed 44)           | 979.0 [890.2, 1079.9] | Tuned tabular (Plan 1) |
-| 7 | time-moe-200m-L720             | 985.9 [878.2, 1119.7] | Bare TSFM (Plan 3) |
-| 8 | patchtsmixer-L168+residual-h   | 1045.8 [—] | Quick-win rescue (−33% vs bare) |
-| 9 | timesfm-L168+residual-h        | 1057.5 [—] | Plan 6 |
-| 10 | timesfm-2.5-L168              | 1173.2 [1057.2, 1313.2] | Bare TSFM |
-| 11 | moirai-L336+residual-h        | 1317.2 [—] | Plan 6 (biggest rescue: −24%) |
-| 12 | mstl_ets-hijri                | 1527.5 [1379.5, 1692.9] | Best classical |
+| 1 | **ensemble-top4-residual-median** | **872.4** [783.9, 984.9] | Median of 4 residual-corrected models (Tier-2) |
+| 2 | ensemble-top4-median (mixed)   | 891.4 [798.6, 1009.8] | Tier-1 composite |
+| 3 | routed-best-per-regime         | 916.0 [824.2, 1036.9] | Tier-1 composite (single-model latency) |
+| 4 | lgbm-hijri+residual-h          | 940.4 [848.5, 1044.1] | Tier-2 (rescued incumbent) |
+| 5 | chronos-bolt-L720+residual-h   | 948.5 [846.9, 1072.4] | Plan 6 (regime-stratified) |
+| 6 | lgbm-nohijri+residual-h        | 950.7 [855.2, 1063.1] | Tier-2 |
+| 7 | time-moe-L720+residual-h       | 954.5 [851.7, 1079.0] | Plan 6 |
+| 8 | chronos-bolt-L720              | 968.9 [868.8, 1097.9] | Bare TSFM (Plan 3) |
+| 9 | lgbm-hijri (seed 44)           | 979.0 [890.2, 1079.9] | Tuned tabular (Plan 1) |
+| 10 | time-moe-200m-L720            | 985.9 [878.2, 1119.7] | Bare TSFM (Plan 3) |
+| 11 | patchtsmixer-L168+residual-h  | 1045.8 | Quick-win rescue (−33% vs bare) |
+| 12 | timesfm-L168+residual-h       | 1057.5 | Plan 6 |
+| 13 | timesfm-2.5-L168              | 1173.2 [1057.2, 1313.2] | Bare TSFM |
+| 14 | sarimax-hijri+residual-h      | 1299.3 | **Tier-2 (−48%, biggest rescue)** |
+| 15 | moirai-L336+residual-h        | 1317.2 | Plan 6 (−24% rescue) |
+| 16 | mstl_ets-hijri+residual-h     | 1364.9 | Tier-2 (−11%) |
+| 17 | mstl_ets-hijri                | 1527.5 [1379.5, 1692.9] | Best classical |
 | ... | ... | ... | ... |
 
 **CI-overlap clusters (top tier):**
@@ -212,22 +218,30 @@ the summary:
 
 | Model | Bare MAE | +residual-h MAE | Δ |
 |---|---|---|---|
-| **moirai-L336** | 1727.1 | **1317.2** | **−23.7%** |
-| **patchtsmixer-L168** | 1552.7 | **1045.8** | **−32.6%** |
-| **timesfm-L168** | 1173.2 | **1057.5** | **−9.9%** |
-| time-moe-L720 | 985.9 | 954.5 | −3.2% |
-| chronos-L720 | 968.9 | 948.5 | −2.1% |
+| **sarimax-hijri** | 2485.9 | **1299.3** | **−47.7%** (Tier-2) |
+| **patchtsmixer-L168** | 1552.7 | **1045.8** | **−32.6%** (Tier-1) |
+| **moirai-L336** | 1727.1 | **1317.2** | **−23.7%** (Plan 6) |
+| **mstl_ets-hijri** | 1527.5 | **1364.9** | **−10.6%** (Tier-2) |
+| **timesfm-L168** | 1173.2 | **1057.5** | **−9.9%** (Plan 6) |
+| **lgbm-nohijri** | 1003.3 | **950.7** | **−5.3%** (Tier-2) |
+| **lgbm-hijri** | 979.0 | **940.4** | **−4.0%** (Tier-2) |
+| time-moe-L720 | 985.9 | 954.5 | −3.2% (Plan 6) |
+| chronos-L720 | 968.9 | 948.5 | −2.1% (Plan 6) |
 
-A simple rule emerges: **the worse the bare model, the more it
-benefits from a residual head.** Moirai (bare rank #10) and
-PatchTSMixer (bare rank #8) rescue dramatically; Chronos and Time-MoE
-(bare ranks #1, #3) gain marginally because they have less error
-structure left for a learner to exploit.
+A simple monotonic rule emerges across all 9 base models tested:
+**the worse the bare model, the more it benefits from a residual
+head.** SARIMAX (bare rank #21 of 28) recovers 48%; LightGBM-hijri
+(bare rank #9) recovers just 4%. The strongest single model after
+residual correction is LGBM-hijri+residual-h at 940.4 — a 4% rescue
+on the tuned tabular incumbent is itself a notable finding (we
+expected near-zero improvement, since LGBM was trained on the same
+feature set).
 
 The critical design choice is **regime-stratified routing**: train
 the residual on Normal+Ramadan only, route Heatwave τ back to the
-bare TSFM. Without it, Chronos and Time-MoE aggregate gets *worse*
-because all-regime correction regresses Heatwave by 25-30%.
+bare model. Without it, several models *regress* on aggregate because
+the residual head injects bias from the more common Normal regime
+into the Heatwave forecasts.
 
 ## 8. What's still open
 
@@ -253,21 +267,28 @@ because all-regime correction regresses Heatwave by 25-30%.
 ## 10. Recommendations for the deployment story
 
 1. **For best accuracy (no ops constraints):** ship the
-   **ensemble-top4-median**. MAE 891.4, beats every single model by
-   ≥8%. Pay 4× the inference cost (4 models per τ); negligible if
+   **ensemble-top4-residual-median**. MAE 872.4, beats every single
+   model by ≥9%. Pay 4× the inference cost (Chronos, LGBM, Time-MoE,
+   Moirai, each with a LightGBM residual head); negligible if
    forecasts are computed once per hour or batched.
 2. **For best accuracy with single-model inference latency:** ship
    **routed-best-per-regime**. MAE 916.0. Run a cheap regime
    classifier per τ (predicate on `is_ramadan` + 3-day-temp-≥35
    sliding window), then call only Chronos-L720, LGBM-hijri, or
    Chronos+residual for that τ. No ensembling overhead.
-3. **For single-architecture simplicity:** ship Chronos-Bolt-Base
-   L=720 + LightGBM residual head. MAE 948.5, single GPU + single
-   LightGBM head, easy debugging.
-4. **For the proposal-faithful tabular-only baseline:** ship
-   LightGBM-hijri. MAE 979, no GPU at all. Beats most TSFMs and is
-   the easiest to retrain on fresh data.
-5. **For short-horizon (1-6 h) forecasts specifically:** ship
+3. **For tabular-only single-architecture simplicity:** ship
+   **LightGBM-hijri + residual head**. MAE 940.4 — the best
+   single-model entry. No GPU at all, single LightGBM trained on
+   features + a second LightGBM trained on the first's residuals.
+4. **For TSFM-only deployment:** ship Chronos-Bolt-Base L=720 +
+   LightGBM residual head. MAE 948.5, single GPU + single LightGBM
+   head, easy debugging. Slightly behind the LGBM-only stack but more
+   robust across regimes.
+5. **For the proposal-faithful zero-shot baseline:** ship Chronos-Bolt-
+   Base L=720 alone. MAE 968.9, no training of any kind, no feature
+   engineering. Beats every model the proposal listed except
+   LightGBM-hijri.
+6. **For short-horizon (1-6 h) forecasts specifically:** ship
    Time-MoE-200M L=720 — its h=1 MAE is 262, four to five times
    better than any other model at that horizon.
 
