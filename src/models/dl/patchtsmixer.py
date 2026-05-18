@@ -6,12 +6,23 @@ y forecast. See docs/superpowers/specs/2026-05-14-patchtsmixer-baseline-design.m
 """
 from __future__ import annotations
 
+import random
+import tempfile
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from transformers import (
+    EarlyStoppingCallback,
+    PatchTSMixerConfig,
+    PatchTSMixerForPrediction,
+    Trainer,
+    TrainingArguments,
+    set_seed,
+)
 
 
 _BASE_CHANNELS = [
@@ -33,6 +44,32 @@ def _channels_for_variant(variant: str) -> list[str]:
     raise ValueError(
         f"Unknown variant {variant!r}. Expected nohijri | hijri | hijri_plusB."
     )
+
+
+def _df_to_array(df: pd.DataFrame, channels: list[str]) -> np.ndarray:
+    """Return (T, C) float32 array of channels from df, in the given order."""
+    missing = [c for c in channels if c not in df.columns]
+    if missing:
+        raise KeyError(f"DataFrame missing channels: {missing}")
+    return df[channels].to_numpy(dtype=np.float32, copy=True)
+
+
+def _compute_mae(eval_pred) -> dict[str, float]:
+    """HF Trainer compute_metrics: returns MAE on the y-channel.
+
+    PatchTSMixerForPredictionOutput has multiple fields (prediction_outputs,
+    last_hidden_state, ...). Trainer passes them as a tuple via
+    eval_pred.predictions; we take the first element (prediction_outputs)
+    which has shape (N, H, num_targets) = (N, H, 1).
+    eval_pred.label_ids has shape (N, H, 1) from future_values.
+    """
+    preds = eval_pred.predictions
+    if isinstance(preds, (tuple, list)):
+        preds = preds[0]
+    preds = np.asarray(preds)
+    labels = np.asarray(eval_pred.label_ids)
+    mae = float(np.mean(np.abs(preds.reshape(-1) - labels.reshape(-1))))
+    return {"mae": mae}
 
 
 class WindowedDataset(Dataset):
@@ -114,5 +151,92 @@ class PatchTSMixerModel:
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
         self.early_stopping_patience = early_stopping_patience
-        self._fitted_model = None
+        self._fitted_model: PatchTSMixerForPrediction | None = None
         self._fit_history_arr: np.ndarray | None = None  # train+val concat for predict()
+
+    def _build_model(self) -> PatchTSMixerForPrediction:
+        config = PatchTSMixerConfig(
+            context_length=self.context_length,
+            prediction_length=self.prediction_length,
+            patch_length=self.patch_length,
+            patch_stride=self.patch_stride,
+            num_input_channels=len(self.channels),
+            d_model=self.d_model,
+            num_layers=self.num_layers,
+            expansion_factor=self.expansion_factor,
+            dropout=self.dropout,
+            head_dropout=self.head_dropout,
+            mode="mix_channel",
+            scaling="std",
+            prediction_channel_indices=[0],  # y is channel 0
+            loss="mse",
+        )
+        return PatchTSMixerForPrediction(config)
+
+    def fit(
+        self,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        hijri: bool,
+        seed: int,
+    ) -> None:
+        set_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+        train_arr = _df_to_array(train_df, self.channels)
+        val_arr = _df_to_array(val_df, self.channels)
+        train_ds = WindowedDataset(train_arr, self.context_length, self.prediction_length)
+        val_ds = WindowedDataset(val_arr, self.context_length, self.prediction_length)
+
+        model = self._build_model()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = TrainingArguments(
+                output_dir=str(Path(tmpdir) / "out"),
+                num_train_epochs=self.max_epochs,
+                per_device_train_batch_size=self.batch_size,
+                per_device_eval_batch_size=self.batch_size * 4,
+                learning_rate=self.learning_rate,
+                weight_decay=self.weight_decay,
+                warmup_steps=self.warmup_steps,
+                lr_scheduler_type="cosine",
+                max_grad_norm=1.0,
+                bf16=torch.cuda.is_available() and torch.cuda.is_bf16_supported(),
+                eval_strategy="epoch",
+                save_strategy="epoch",
+                save_total_limit=1,
+                load_best_model_at_end=True,
+                metric_for_best_model="mae",
+                greater_is_better=False,
+                logging_steps=50,
+                report_to="none",
+                seed=seed,
+                data_seed=seed,
+                dataloader_num_workers=0,
+                # Tell Trainer which dict key holds the labels so it routes
+                # future_values to EvalPrediction.label_ids instead of dropping
+                # it.
+                label_names=["future_values"],
+            )
+            trainer = Trainer(
+                model=model,
+                args=args,
+                train_dataset=train_ds,
+                eval_dataset=val_ds,
+                compute_metrics=_compute_mae,
+                callbacks=[EarlyStoppingCallback(
+                    early_stopping_patience=self.early_stopping_patience,
+                )],
+            )
+            trainer.train()
+            # load_best_model_at_end=True ensures trainer.model is the
+            # best-val-MAE checkpoint after train() returns.
+            self._fitted_model = trainer.model.eval()
+
+        # Concat train + val so predict() can grab context windows that
+        # straddle the train/val/test boundaries.
+        self._fit_history_arr = np.concatenate([train_arr, val_arr], axis=0)
