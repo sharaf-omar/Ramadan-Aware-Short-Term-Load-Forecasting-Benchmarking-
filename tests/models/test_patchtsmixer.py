@@ -58,3 +58,46 @@ def test_patchtsmixer_feature_set_per_variant():
     assert m_nh.channels == base
     assert m_h.channels  == base + hijri
     assert m_pb.channels == base + hijri + ablB
+
+
+def _synthetic_df(n: int = 600) -> pd.DataFrame:
+    """Hourly synthetic with daily seasonality + temperature signal."""
+    idx = pd.date_range("2020-01-01", periods=n, freq="h", tz="UTC")
+    t = np.arange(n)
+    load = (
+        30000.0
+        + 5000.0 * np.sin(2 * np.pi * t / 24)
+        + np.random.default_rng(0).normal(scale=300.0, size=n)
+    ).astype(np.float32)
+    temp = (15.0 + 10.0 * np.sin(2 * np.pi * t / 24)).astype(np.float32)
+    return pd.DataFrame({
+        "actual_load": load,
+        "temp_c": temp,
+        "dewpoint_c": 5.0,
+        "wind_speed": 3.0,
+        "solar_rad": 0.0,
+        "temp_sq": (temp ** 2),
+        "temp_above_35": 0.0,
+        "is_ramadan": 0,
+        "day_of_ramadan": 0,
+        "is_eid": 0,
+        "ramadan_x_heatwave": 0,
+        "ramadan_x_temp_above_35": 0.0,
+        "regime": "Normal",
+    }, index=idx)
+
+
+def test_patchtsmixer_fit_runs_one_epoch():
+    df = _synthetic_df(n=600)
+    train = df.iloc[:400]
+    val   = df.iloc[400:550]
+    m = PatchTSMixerModel(
+        variant="nohijri",
+        context_length=48, prediction_length=24,
+        patch_length=8, patch_stride=4,
+        d_model=32, num_layers=1, expansion_factor=2,
+        max_epochs=1, batch_size=16, warmup_steps=5,
+        early_stopping_patience=10,
+    )
+    m.fit(train, val, hijri=False, seed=0)
+    assert m._fitted_model is not None
