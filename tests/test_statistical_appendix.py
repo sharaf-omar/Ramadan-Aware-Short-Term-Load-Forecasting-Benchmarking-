@@ -52,3 +52,44 @@ def test_models_constant_has_12_entries():
     for entry in MODELS:
         assert len(entry) == 2
         assert entry[1].endswith(".parquet")
+
+
+def _two_model_synthetic(n=240):
+    """24h × 10d of synthetic predictions with regime labels."""
+    ts = pd.date_range("2024-01-01", periods=n, freq="h", tz="UTC")
+    y_true = np.sin(np.arange(n) * 2 * np.pi / 24) + 10
+    rng = np.random.default_rng(0)
+    return {
+        "good": pd.DataFrame({
+            "y_true": y_true,
+            "y_pred": y_true + rng.normal(scale=0.1, size=n),
+            "regime": ["Normal"] * (n // 2) + ["Ramadan"] * (n // 2),
+        }, index=ts),
+        "bad": pd.DataFrame({
+            "y_true": y_true,
+            "y_pred": y_true + rng.normal(scale=1.0, size=n),
+            "regime": ["Normal"] * (n // 2) + ["Ramadan"] * (n // 2),
+        }, index=ts),
+    }
+
+
+def test_compute_ci_table_shape_and_ordering():
+    from scripts.build_statistical_appendix import compute_ci_table
+    preds = _two_model_synthetic()
+    df = compute_ci_table(preds, regimes=["aggregate", "Normal", "Ramadan"])
+    assert list(df.columns) == ["model", "regime", "mae", "ci_lo", "ci_hi"]
+    assert len(df) == 2 * 3
+    g_agg = df[(df.model == "good") & (df.regime == "aggregate")].mae.iloc[0]
+    b_agg = df[(df.model == "bad")  & (df.regime == "aggregate")].mae.iloc[0]
+    assert b_agg > g_agg
+    row = df.iloc[0]
+    assert row.ci_lo <= row.mae <= row.ci_hi
+
+
+def test_compute_ci_table_handles_empty_regime():
+    from scripts.build_statistical_appendix import compute_ci_table
+    preds = _two_model_synthetic()
+    df = compute_ci_table(preds, regimes=["aggregate", "Heatwave"])
+    heat = df[df.regime == "Heatwave"]
+    assert len(heat) == 2
+    assert heat.mae.isna().all()
