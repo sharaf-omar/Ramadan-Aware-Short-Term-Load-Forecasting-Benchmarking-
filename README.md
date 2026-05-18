@@ -71,7 +71,7 @@ Ramadan, Heat-wave) in [`docs/statistical_appendix.md`](docs/statistical_appendi
 | 🎞️ | **Demo video** (2:49 animated walkthrough) | [v0.1-capstone-demo · presentation-demo.mp4](https://github.com/OmarTheGrey/Ramadan-Aware-Short-Term-Load-Forecasting-Benchmarking-/releases/download/v0.1-capstone-demo/presentation-demo.mp4) |
 | 🖥️ | **Live deck** (static build, no install) | [`deck/index.html`](deck/index.html) |
 | 🏛️ | **Reference landing page** | [`presentation.html`](presentation.html) |
-| 📄 | **Compiled report** (11 pp, two-column) | [`Beyond-Blackouts.pdf`](Beyond-Blackouts.pdf) |
+| 📄 | **Compiled report** (11 pp, two-column) | [`Beyond-Blackouts-Report.pdf`](Beyond-Blackouts-Report.pdf) |
 | ⚙️ | **Presentation source** (Vite + React + TS) | [`presentation/`](presentation/) |
 | 📚 | **LaTeX source** | [`report/main.tex`](report/main.tex) |
 
@@ -155,7 +155,7 @@ open deck/index.html              # macOS
 start deck\index.html             # Windows
 xdg-open deck/index.html          # Linux
 
-open Beyond-Blackouts.pdf
+open Beyond-Blackouts-Report.pdf
 ```
 
 ### Run the presentation from source
@@ -221,7 +221,7 @@ The complete 31×31 DM matrices for all four regimes live in
 - ✅ **Post-hoc residual heads** — a single LightGBM head with regime-stratified routing applied to nine base models · [docs](docs/residual_correction.md)
 - ✅ **Three composite systems** — median ensemble, per-regime best-of router, Normal/Ramadan/Heat-wave meta-router v1 and v2 · [synthesis](docs/capstone_synthesis.md)
 - ✅ **Statistical appendix** — 31-system bootstrap CIs and four pairwise Diebold–Mariano matrices (aggregate, Normal, Ramadan, Heat-wave), Holm-adjusted · [appendix](docs/statistical_appendix.md) · [deep analysis](docs/deep_analysis.md) · [failure modes](docs/failure_modes.md)
-- ✅ **LaTeX report** — Egypt-anchored motivation, two-column layout, 11 pp · [`Beyond-Blackouts.pdf`](Beyond-Blackouts.pdf)
+- ✅ **LaTeX report** — Egypt-anchored motivation, two-column layout, 11 pp · [`Beyond-Blackouts-Report.pdf`](Beyond-Blackouts-Report.pdf)
 - ✅ **React presentation** — 14-slide Carbon-styled deck with live Recharts charts, framer-motion animations, video-capture mode, and a Playwright-driven PDF exporter · [`deck/index.html`](deck/index.html) / [`presentation/`](presentation/)
 
 ---
@@ -230,7 +230,7 @@ The complete 31×31 DM matrices for all four regimes live in
 
 ```
 .                            ← top-level deliverables
-├── Beyond-Blackouts.pdf     latest report render (11 pp, 2.4 MB)
+├── Beyond-Blackouts-Report.pdf     latest report render (11 pp, 2.4 MB)
 ├── presentation.html        landing page → deck / report / video / repo
 ├── deck/                    static built presentation (744 KB)
 │
