@@ -240,3 +240,76 @@ class PatchTSMixerModel:
         # Concat train + val so predict() can grab context windows that
         # straddle the train/val/test boundaries.
         self._fit_history_arr = np.concatenate([train_arr, val_arr], axis=0)
+
+    def predict(
+        self,
+        test_df: pd.DataFrame,
+        context_length: int | None = None,
+    ) -> pd.DataFrame:
+        """Per-τ day-ahead inference.
+
+        For each test τ, build the past-L window ending at τ-24, forward through
+        the model, take the 24th forecast step as y_pred[τ]. The full 24-step
+        block is also saved as y_block[τ] for the per-horizon analysis.
+        """
+        if self._fitted_model is None:
+            raise RuntimeError("Call fit() before predict().")
+        L = context_length or self.context_length
+        H = self.prediction_length
+        assert L == self.context_length, (
+            f"predict() called with L={L} but model was fit at L={self.context_length}"
+        )
+
+        test_arr = _df_to_array(test_df, self.channels)
+        # Concat fit-time history with test so τ values near test start can
+        # still form a valid past window (window crosses val/test boundary).
+        full_arr = np.concatenate([self._fit_history_arr, test_arr], axis=0)
+        history_len = len(self._fit_history_arr)
+
+        # For each test τ (index i in test_df), past window is
+        # full_arr[history_len + i - 24 - L : history_len + i - 24].
+        # Drop τ values where this window would have a negative start.
+        n_test = len(test_df)
+        valid_mask = np.zeros(n_test, dtype=bool)
+        past_starts = np.zeros(n_test, dtype=np.int64)
+        for i in range(n_test):
+            start = history_len + i - 24 - L
+            if start >= 0:
+                valid_mask[i] = True
+                past_starts[i] = start
+        valid_idx = np.where(valid_mask)[0]
+        if len(valid_idx) == 0:
+            return pd.DataFrame(columns=["y_true", "y_pred", "regime"])
+
+        device = next(self._fitted_model.parameters()).device
+        batch_size = 256
+        y_pred = np.empty(len(valid_idx), dtype=np.float32)
+        y_block = np.empty((len(valid_idx), H), dtype=np.float32)
+
+        self._fitted_model.eval()
+        with torch.no_grad():
+            for b_start in range(0, len(valid_idx), batch_size):
+                b_idx = valid_idx[b_start : b_start + batch_size]
+                past = np.stack(
+                    [full_arr[past_starts[i] : past_starts[i] + L] for i in b_idx],
+                    axis=0,
+                )  # (B, L, C)
+                past_t = torch.from_numpy(past).to(device)
+                outputs = self._fitted_model(past_values=past_t)
+                pred = outputs.prediction_outputs.detach().float().cpu().numpy()
+                pred = pred.reshape(pred.shape[0], H)  # (B, H)
+                y_block[b_start : b_start + len(b_idx)] = pred
+                y_pred[b_start : b_start + len(b_idx)] = pred[:, -1]  # horizon-24
+
+        out_idx = test_df.index[valid_idx]
+        if "regime" in test_df.columns:
+            regimes = test_df["regime"].values[valid_idx]
+        else:
+            regimes = np.full(len(valid_idx), "Normal", dtype=object)
+        out = pd.DataFrame({
+            "y_true": test_df["actual_load"].values[valid_idx],
+            "y_pred": y_pred,
+            "regime": regimes,
+            "y_block": [list(map(float, row)) for row in y_block],
+        }, index=out_idx)
+        return out
