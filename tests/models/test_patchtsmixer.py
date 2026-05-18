@@ -101,3 +101,25 @@ def test_patchtsmixer_fit_runs_one_epoch():
     )
     m.fit(train, val, hijri=False, seed=0)
     assert m._fitted_model is not None
+
+
+def test_patchtsmixer_predict_returns_unified_schema():
+    df = _synthetic_df(n=800)
+    train = df.iloc[:500]
+    val   = df.iloc[500:650]
+    test  = df.iloc[650:]
+    m = PatchTSMixerModel(
+        variant="nohijri",
+        context_length=48, prediction_length=24,
+        patch_length=8, patch_stride=4,
+        d_model=32, num_layers=1, expansion_factor=2,
+        max_epochs=1, batch_size=16, warmup_steps=5,
+    )
+    m.fit(train, val, hijri=False, seed=0)
+    out = m.predict(test)
+    assert {"y_true", "y_pred", "regime"} <= set(out.columns)
+    assert out["y_pred"].notna().all()
+    assert len(out) > 0
+    assert out.index.is_monotonic_increasing
+    if "y_block" in out.columns:
+        assert all(len(b) == 24 for b in out["y_block"].head(5))
