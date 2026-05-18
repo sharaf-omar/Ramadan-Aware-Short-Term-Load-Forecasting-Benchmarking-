@@ -62,3 +62,52 @@ def load_predictions(
         raise ValueError("No τ overlap across model parquets — aborting.")
 
     return {name: df.loc[common].sort_index() for name, df in dfs.items()}
+
+
+from src.evaluation.bootstrap import block_bootstrap_ci
+
+
+def _abs_err(df: pd.DataFrame, regime: str) -> np.ndarray:
+    if regime == "aggregate":
+        sub = df
+    else:
+        sub = df[df["regime"] == regime]
+    if len(sub) == 0:
+        return np.array([], dtype=float)
+    return np.abs(sub["y_true"].values - sub["y_pred"].values).astype(float)
+
+
+def compute_ci_table(
+    preds: dict[str, pd.DataFrame],
+    regimes: list[str] = REGIMES,
+    n_resamples: int = 1000,
+    block_size: int = 24,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """For each (model, regime) compute MAE + 95% block-bootstrap CI.
+
+    Returns long-format DataFrame: model, regime, mae, ci_lo, ci_hi.
+    Empty-regime rows have NaN for all three numeric columns.
+    """
+    rows = []
+    for model_name in preds:
+        df = preds[model_name]
+        for regime in regimes:
+            err = _abs_err(df, regime)
+            if len(err) == 0:
+                rows.append({
+                    "model": model_name, "regime": regime,
+                    "mae": np.nan, "ci_lo": np.nan, "ci_hi": np.nan,
+                })
+                continue
+            mae = float(err.mean())
+            ci_lo, ci_hi = block_bootstrap_ci(
+                err, block_size=block_size,
+                n_resamples=n_resamples, alpha=0.05, seed=seed,
+                statistic=np.mean,
+            )
+            rows.append({
+                "model": model_name, "regime": regime,
+                "mae": mae, "ci_lo": float(ci_lo), "ci_hi": float(ci_hi),
+            })
+    return pd.DataFrame(rows, columns=["model", "regime", "mae", "ci_lo", "ci_hi"])
