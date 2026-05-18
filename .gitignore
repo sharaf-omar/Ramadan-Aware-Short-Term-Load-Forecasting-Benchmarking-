@@ -1,11 +1,15 @@
 # Environment variables
 .env
+.env.local
+.env.*.local
 
 # Python build/cache
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual envs
 .venv/
@@ -20,3 +24,51 @@ hf-cache/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node / Vite / React (presentation app)
+node_modules/
+dist/
+build/
+.cache/
+.parcel-cache/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Playwright
+playwright-report/
+test-results/
+
+# LaTeX build artifacts that escape report/
+texput.log
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.run.xml
+*.bbl
+*.bcf
+*.blg
+
+# Stray draft PDFs at repo root (the canonical report PDF lives at
+# report/main.pdf, gitignored by report/.gitignore — regenerate locally).
+/draft*.pdf
+/main.pdf
+
+# Stale duplicate of presentation/ from a manual snapshot
+/PRES/
+
+# Generated presentation PDF (regenerate via `npm run export:pdf`)
+/presentation.pdf
+/presentation/presentation.pdf
