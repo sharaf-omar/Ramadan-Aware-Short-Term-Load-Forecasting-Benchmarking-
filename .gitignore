@@ -79,3 +79,7 @@ texput.log
 # Junk drawer — local-only stash for old drafts, snapshots, logs.
 # Whitelist anything inside that should be tracked via `git add -f`.
 docs/rand/
+
+# Raw ERA5 weather inputs — 1.7 GB across 40 NetCDFs.
+# Not in git; fetch via `python scripts/download_era5.py` (Copernicus CDS API).
+data/raw/*.nc

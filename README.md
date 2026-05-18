@@ -180,6 +180,11 @@ npm run export:pdf                # writes presentation.pdf (vector text, 14 pp)
 pip install -e . && pip install -r requirements.txt
 cp .env-example .env              # EPIAS credentials for the 2017 buffer
 
+# Fetch the 40 ERA5 NetCDFs (~1.7 GB) from Copernicus CDS — see
+# the header of the script for the one-time .cdsapirc setup.
+pip install cdsapi
+python scripts/download_era5.py
+
 python -m src.data.preprocess_epias
 python -m src.data.spatial_weights
 python -m src.data.build_v2_dataset
@@ -247,6 +252,7 @@ The complete 31×31 DM matrices for all four regimes live in
 │   └── evaluation/          metrics, DM, block bootstrap, regimes
 │
 ├── data/
+│   ├── raw/                 ERA5 NetCDFs (gitignored — fetch via scripts/download_era5.py)
 │   ├── processed/           v2 dataset + weather panels
 │   ├── predictions/         31 prediction parquets (per model × variant × L × seed)
 │   ├── statistical_appendix/ CI table + 4 DM matrices
