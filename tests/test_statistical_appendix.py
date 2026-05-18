@@ -93,3 +93,44 @@ def test_compute_ci_table_handles_empty_regime():
     heat = df[df.regime == "Heatwave"]
     assert len(heat) == 2
     assert heat.mae.isna().all()
+
+
+def test_compute_dm_matrix_pairs_holm_adjusted():
+    from scripts.build_statistical_appendix import compute_dm_matrix
+    ts = pd.date_range("2024-01-01", periods=500, freq="h", tz="UTC")
+    y_true = np.sin(np.arange(500) * 2 * np.pi / 24) * 100 + 1000
+    rng = np.random.default_rng(0)
+    preds = {
+        "best":  pd.DataFrame({
+            "y_true": y_true,
+            "y_pred": y_true + rng.normal(scale=10.0, size=500),
+            "regime": ["Normal"] * 500,
+        }, index=ts),
+        "mid":   pd.DataFrame({
+            "y_true": y_true,
+            "y_pred": y_true + rng.normal(scale=50.0, size=500),
+            "regime": ["Normal"] * 500,
+        }, index=ts),
+        "worst": pd.DataFrame({
+            "y_true": y_true,
+            "y_pred": y_true + rng.normal(scale=200.0, size=500),
+            "regime": ["Normal"] * 500,
+        }, index=ts),
+    }
+    df = compute_dm_matrix(preds, regime="aggregate")
+    assert len(df) == 3
+    assert list(df.columns) == ["model_i", "model_j", "dm_stat", "p_raw", "p_holm"]
+    assert (df.p_holm >= df.p_raw - 1e-12).all()
+    bw = df[(df.model_i == "best") & (df.model_j == "worst")]
+    assert len(bw) == 1
+    assert bw.p_holm.iloc[0] < 0.01
+
+
+def test_compute_dm_matrix_skips_empty_regime():
+    from scripts.build_statistical_appendix import compute_dm_matrix
+    preds = _two_model_synthetic()
+    df = compute_dm_matrix(preds, regime="Heatwave")
+    assert len(df) == 1
+    assert pd.isna(df.dm_stat.iloc[0])
+    assert pd.isna(df.p_raw.iloc[0])
+    assert pd.isna(df.p_holm.iloc[0])

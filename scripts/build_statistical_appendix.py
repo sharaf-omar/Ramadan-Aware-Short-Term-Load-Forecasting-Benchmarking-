@@ -111,3 +111,64 @@ def compute_ci_table(
                 "mae": mae, "ci_lo": float(ci_lo), "ci_hi": float(ci_hi),
             })
     return pd.DataFrame(rows, columns=["model", "regime", "mae", "ci_lo", "ci_hi"])
+
+
+from src.evaluation.dm_test import dm_test, holm_bonferroni
+
+
+def _regime_mask(df: pd.DataFrame, regime: str) -> np.ndarray:
+    if regime == "aggregate":
+        return np.ones(len(df), dtype=bool)
+    return (df["regime"] == regime).values
+
+
+def compute_dm_matrix(
+    preds: dict[str, pd.DataFrame],
+    regime: str,
+) -> pd.DataFrame:
+    """Pairwise DM tests over the lower triangle of the model list.
+
+    Returns long format: model_i, model_j, dm_stat, p_raw, p_holm.
+    DM convention from src.evaluation.dm_test: dm_stat > 0 means model_j
+    has lower loss. Holm-Bonferroni applied within this single call's
+    family of comparisons.
+    """
+    names = list(preds.keys())
+    pairs = []
+    raw_p = []
+    stats = []
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            name_i, name_j = names[i], names[j]
+            df_i = preds[name_i]
+            df_j = preds[name_j]
+            mask = _regime_mask(df_i, regime)
+            n = int(mask.sum())
+            if n < 5:
+                pairs.append((name_i, name_j))
+                raw_p.append(np.nan)
+                stats.append(np.nan)
+                continue
+            y_true = df_i["y_true"].values[mask]
+            y_pred_a = df_i["y_pred"].values[mask]
+            y_pred_b = df_j["y_pred"].values[mask]
+            stat, p = dm_test(y_true, y_pred_a, y_pred_b, h=24, loss="mae")
+            pairs.append((name_i, name_j))
+            raw_p.append(p)
+            stats.append(stat)
+
+    valid_idx = [k for k, p in enumerate(raw_p) if not np.isnan(p)]
+    if valid_idx:
+        valid_p = [raw_p[k] for k in valid_idx]
+        adj = holm_bonferroni(valid_p)
+        p_holm = [np.nan] * len(raw_p)
+        for k, p_adj in zip(valid_idx, adj):
+            p_holm[k] = p_adj
+    else:
+        p_holm = [np.nan] * len(raw_p)
+
+    rows = [
+        {"model_i": a, "model_j": b, "dm_stat": s, "p_raw": pr, "p_holm": ph}
+        for (a, b), s, pr, ph in zip(pairs, stats, raw_p, p_holm)
+    ]
+    return pd.DataFrame(rows, columns=["model_i", "model_j", "dm_stat", "p_raw", "p_holm"])
