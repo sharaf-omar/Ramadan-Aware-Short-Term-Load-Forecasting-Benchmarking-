@@ -44,6 +44,12 @@ MODELS: list[tuple[str, str]] = [
     ("patchtsmixer-L168+res-h",   "patchtsmixer__residual__hijri__L168__seed42.parquet"),
     ("ensemble-top4-median",      "ensemble__top4__seed0.parquet"),
     ("routed-best-per-regime",    "routed__best_per_regime__seed0.parquet"),
+    # Tier-2 quick-win artifacts: residual heads on LGBM and classical baselines + improved ensemble.
+    ("lgbm-nohijri+res-h",        "lgbm__nohijri__residual_h__seed44.parquet"),
+    ("lgbm-hijri+res-h",          "lgbm__hijri__residual_h__seed44.parquet"),
+    ("mstl_ets-hijri+res-h",      "mstl_ets__hijri__residual_h__seed0.parquet"),
+    ("sarimax-hijri+res-h",       "sarimax__hijri__residual_h__seed0.parquet"),
+    ("ensemble-top4-residual-median", "ensemble__top4_residual__seed0.parquet"),
 ]
 
 REGIMES = ["aggregate", "Normal", "Ramadan", "Heatwave"]
