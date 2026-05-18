@@ -134,3 +134,22 @@ def test_compute_dm_matrix_skips_empty_regime():
     assert pd.isna(df.dm_stat.iloc[0])
     assert pd.isna(df.p_raw.iloc[0])
     assert pd.isna(df.p_holm.iloc[0])
+
+
+def test_render_markdown_includes_required_sections():
+    from scripts.build_statistical_appendix import (
+        compute_ci_table, compute_dm_matrix, render_markdown,
+    )
+    preds = _two_model_synthetic()
+    ci = compute_ci_table(preds, regimes=["aggregate", "Normal", "Ramadan"])
+    dm_by_regime = {
+        r: compute_dm_matrix(preds, r) for r in ["aggregate", "Normal", "Ramadan"]
+    }
+    md = render_markdown(ci, dm_by_regime, n_tau=240)
+    assert "# Statistical Appendix" in md
+    assert "## Bootstrap MAE confidence intervals" in md
+    assert "## Pairwise Diebold-Mariano tests" in md
+    for r in ["aggregate", "Normal", "Ramadan"]:
+        assert f"### DM matrix — {r}" in md
+    assert "good" in md and "bad" in md
+    assert ("***" in md) or ("**" in md) or ("ns" in md)

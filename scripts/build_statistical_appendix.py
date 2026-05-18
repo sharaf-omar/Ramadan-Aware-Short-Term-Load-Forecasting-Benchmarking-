@@ -172,3 +172,106 @@ def compute_dm_matrix(
         for (a, b), s, pr, ph in zip(pairs, stats, raw_p, p_holm)
     ]
     return pd.DataFrame(rows, columns=["model_i", "model_j", "dm_stat", "p_raw", "p_holm"])
+
+
+def _sig_marker(p: float) -> str:
+    if pd.isna(p):
+        return "—"
+    if p < 0.001:
+        return "***"
+    if p < 0.01:
+        return "**"
+    if p < 0.05:
+        return "*"
+    return "ns"
+
+
+def _format_ci_cell(mae: float, lo: float, hi: float) -> str:
+    if pd.isna(mae):
+        return "—"
+    return f"{mae:.1f} [{lo:.1f}, {hi:.1f}]"
+
+
+def _format_dm_cell(stat: float, p_holm: float) -> str:
+    if pd.isna(stat):
+        return "—"
+    marker = _sig_marker(p_holm)
+    if marker == "ns":
+        return f"{stat:+.1f} ns"
+    return f"{stat:+.1f} {marker}"
+
+
+def render_markdown(
+    ci_df: pd.DataFrame,
+    dm_by_regime: dict[str, pd.DataFrame],
+    n_tau: int,
+) -> str:
+    """Render the full appendix as markdown."""
+    lines: list[str] = []
+    lines.append("# Statistical Appendix")
+    lines.append("")
+    lines.append(
+        "Canonical statistical-rigor artifact for the benchmark. Block-"
+        "bootstrap 95% CIs around MAE for every headline model × regime, "
+        "plus full pairwise Diebold-Mariano matrices (Holm-Bonferroni "
+        "adjusted within each regime).")
+    lines.append("")
+    lines.append(f"**Intersection set size (n=τ rows across all models):** {n_tau:,}")
+    lines.append("")
+    lines.append(
+        "**Bootstrap:** stationary block bootstrap (Politis & Romano 1994), "
+        "block_size=24h, 1000 resamples, alpha=0.05, seed=0.")
+    lines.append("")
+    lines.append(
+        "**DM test:** MAE loss, HAC h=24, two-sided. Holm-Bonferroni applied "
+        "within each regime's pairwise family. Significance markers: "
+        "`***` p<0.001, `**` p<0.01, `*` p<0.05, `ns` otherwise. "
+        "DM stat sign convention (from `src.evaluation.dm_test`): positive "
+        "means model_j (column) has lower loss; negative means model_i (row).")
+    lines.append("")
+
+    lines.append("## Bootstrap MAE confidence intervals")
+    lines.append("")
+    regimes = list(dm_by_regime.keys())
+    header = "| Model | " + " | ".join(regimes) + " |"
+    sep = "|" + "---|" * (len(regimes) + 1)
+    lines.append(header)
+    lines.append(sep)
+    pivot = ci_df.pivot(index="model", columns="regime")
+    for model in ci_df["model"].unique():
+        cells = []
+        for r in regimes:
+            try:
+                mae = pivot.loc[model, ("mae", r)]
+                lo = pivot.loc[model, ("ci_lo", r)]
+                hi = pivot.loc[model, ("ci_hi", r)]
+                cells.append(_format_ci_cell(mae, lo, hi))
+            except KeyError:
+                cells.append("—")
+        lines.append(f"| {model} | " + " | ".join(cells) + " |")
+    lines.append("")
+
+    lines.append("## Pairwise Diebold-Mariano tests")
+    lines.append("")
+    model_order = list(ci_df["model"].unique())
+    for regime in regimes:
+        lines.append(f"### DM matrix — {regime}")
+        lines.append("")
+        dm = dm_by_regime[regime]
+        cells: dict[tuple[str, str], tuple[float, float]] = {}
+        for _, row in dm.iterrows():
+            cells[(row["model_i"], row["model_j"])] = (row["dm_stat"], row["p_holm"])
+        header_cells = ["row \\ col"] + model_order
+        lines.append("| " + " | ".join(header_cells) + " |")
+        lines.append("|" + "---|" * len(header_cells))
+        for i, ri in enumerate(model_order):
+            row_cells: list[str] = [ri]
+            for j, rj in enumerate(model_order):
+                if j <= i:
+                    row_cells.append("")
+                else:
+                    stat, p_holm = cells.get((ri, rj), (np.nan, np.nan))
+                    row_cells.append(_format_dm_cell(stat, p_holm))
+            lines.append("| " + " | ".join(row_cells) + " |")
+        lines.append("")
+    return "\n".join(lines)
