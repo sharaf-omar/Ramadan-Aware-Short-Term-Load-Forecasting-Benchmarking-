@@ -87,22 +87,46 @@ for each test τ:
 
 ## Training protocol
 
-**Sampling:** every valid (context, target) pair from train (2018–2022) +
-val (2023):
-- Context: `(y, exog)[t-L : t]` (L hours, all channels)
+**Sampling:** sliding-window (stride=1) over train (2018–2022) and val
+(2023):
+- Context: `(y, exog)[t-L : t]` (L hours, all channels, ordered)
 - Target: `y[t+1 : t+25]` (24 hours, y-only)
 - Chronological split: training pairs use `t+24 ≤ 2022-12-31 23:00`;
   val pairs use `t+24 ∈ 2023-01-01 .. 2023-12-31`.
+- A pair is dropped if any value in its window is NaN (after the
+  v2-dataset `dropna(subset=["y_lag_336h", "y_roll168_mean"])` this
+  should never happen, but the dataset class checks defensively).
 - At L=336: ~43k train samples + ~8.4k val samples per epoch.
 
+Implementation: a `WindowedDataset(torch.utils.data.Dataset)` class
+that holds the raw float32 array `(T, num_channels)` and the y-target
+array `(T,)`, and on `__getitem__(i)` returns the dict the HF model's
+`forward()` expects:
+```python
+{
+    "past_values":   torch.tensor(arr[i : i + L], dtype=torch.float32),
+    "future_values": torch.tensor(y[i + L : i + L + 24], dtype=torch.float32).unsqueeze(-1),
+}
+```
+`__len__` = `T - L - 24 + 1`. Same class is reused for train, val,
+and the per-τ test dataset (the test set's `future_values` are
+placeholders ignored during `predict()`).
+
 **Optimizer + schedule (from proposal §4.2):**
-- AdamW, `lr = 1e-4`, `weight_decay = 1e-2`
-- Cosine schedule with 500 warmup steps
-- Batch size 32, gradient clip 1.0
-- Max 100 epochs, early stop on val MAE, patience 10
-- bf16 mixed precision (4070 supports it natively)
-- HuggingFace `Trainer` (gets us logging, EarlyStoppingCallback,
-  mixed precision, gradient clipping for free)
+- AdamW, `lr = 1e-4`, `weight_decay = 1e-2` (HF `TrainingArguments`:
+  `learning_rate=1e-4, weight_decay=1e-2, optim="adamw_torch"`)
+- Cosine schedule with 500 warmup steps (`lr_scheduler_type="cosine"`,
+  `warmup_steps=500`)
+- Batch size 32, gradient clip 1.0 (`per_device_train_batch_size=32`,
+  `max_grad_norm=1.0`)
+- Max 100 epochs (`num_train_epochs=100`), early stop on val MAE,
+  patience 10. Requires `metric_for_best_model="mae"`,
+  `greater_is_better=False`, `load_best_model_at_end=True`, and a
+  custom `compute_metrics(eval_pred) -> {"mae": float}` callback —
+  loss is MSE but the early-stopping callback monitors the explicit
+  MAE metric we register.
+- bf16 mixed precision (`bf16=True`; 4070 supports it natively)
+- HuggingFace `Trainer` with `EarlyStoppingCallback(early_stopping_patience=10)`
 
 **Loss:** MSE (the only `PatchTSMixerConfig.loss` value that ships with
 HuggingFace `Trainer`-compatible gradients besides `nll`). Eval is MAE
