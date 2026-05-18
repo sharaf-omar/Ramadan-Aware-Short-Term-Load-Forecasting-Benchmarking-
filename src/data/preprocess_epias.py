@@ -1,74 +1,114 @@
-import pandas as pd
-from hijridate import Gregorian
-from pathlib import Path
-from eptr2 import EPTR2
-import os
+"""EPIAS preprocessing -> epias_processed_final.csv with leak-free t+24 features.
 
-# --- SETUP ---
-ROOT_DIR = Path(__file__).resolve().parents[2] 
+Row convention: each output row is indexed by forecast time tau. Issuance time
+is t = tau - 24. ALL lag and rolling features are built from y at indices <= t.
+
+Run as: python -m src.data.preprocess_epias
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from src.features.hijri import add_hijri_features
+
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT_DIR / "data" / "raw"
 PROCESSED_DIR = ROOT_DIR / "data" / "processed"
-PROCESSED_DIR.mkdir(exist_ok=True, parents=True)
-dotenv_path = ROOT_DIR / ".env"
+DOTENV_PATH = ROOT_DIR / ".env"
+OUTPUT_CSV = PROCESSED_DIR / "epias_processed_final.csv"
 
-eptr = EPTR2(
-    use_dotenv=True, 
-    dotenv_path=str(dotenv_path), 
-    recycle_tgt=True
-)
 
-# FETCH 2017 BUFFER DATA
-try:
-    buffer_df = eptr.call("rt-cons", start_date="2017-12-01", end_date="2017-12-31").rename(columns={'consumption': 'actual_load'})
-except Exception as e:
-    print(f"Error fetching 2017 data: {e}")
-    buffer_df = pd.DataFrame()
+def _fetch_buffer_2017() -> pd.DataFrame:
+    """Fetch Dec 2017 buffer needed for early-2018 lag features.
 
-# LOAD EXISTING 2018-2025 DATA
-df_main  = pd.read_csv(RAW_DIR / "electricity_consumption_2018_2025.csv").rename(columns={'consumption': 'actual_load'})
+    Imported lazily so test collection does not trigger EPTR2 authentication.
+    """
+    from eptr2 import EPTR2
 
-# CONCATENATE
-df = pd.concat([buffer_df, df_main], ignore_index=True)
+    eptr = EPTR2(use_dotenv=True, dotenv_path=str(DOTENV_PATH), recycle_tgt=True)
+    try:
+        buf = eptr.call(
+            "rt-cons", start_date="2017-12-01", end_date="2017-12-31"
+        ).rename(columns={"consumption": "actual_load"})
+    except Exception as exc:
+        print(f"[WARN] Could not fetch 2017 buffer: {exc}. Lags in early 2018 will be NaN.")
+        buf = pd.DataFrame()
+    return buf
 
-# TIMEZONE & SORTING
 
-# Aligning timezones
-df['timestamp'] = pd.to_datetime(df['date'], utc=True)
-df = df.drop(columns=['date', 'time']).sort_values('timestamp').reset_index(drop=True)
+def build_lag_rolling_features(y: pd.Series) -> pd.DataFrame:
+    """Build leak-free lag and rolling features for a y_{t+24} forecast.
 
-# DATA CLEANING
-df['actual_load'] = df['actual_load'].interpolate(method='linear')
+    Each row tau holds features computed from y at indices <= tau-24 only.
+    Concretely:
+        y_lag_24h     = y[tau-24]                # value at issuance
+        y_lag_48h     = y[tau-48]
+        y_lag_168h    = y[tau-168]
+        y_lag_336h    = y[tau-336]
+        y_roll24_mean = mean(y[tau-47..tau-24])  # 24-value window ending at issuance
+        y_roll24_std  = std (y[tau-47..tau-24])
+        y_roll168_mean= mean(y[tau-191..tau-24])
+        y_roll168_std = std (y[tau-191..tau-24])
 
-# HIJRI / RAMADAN LOGIC
-def get_hijri_info(ts):
-    local_ts = ts.tz_convert('Europe/Istanbul')
-    # Use hijridate library
-    h = Gregorian(local_ts.year, local_ts.month, local_ts.day).to_hijri()
-    
-    is_ramadan = 1 if h.month == 9 else 0
-    is_eid = 1 if (h.month == 10 and h.day <= 3) else 0
-    day_of_ramadan = h.day if h.month == 9 else 0
-    return is_ramadan, is_eid, day_of_ramadan
+    Parameters
+    ----------
+    y : hourly load Series with a UTC-aware DatetimeIndex.
 
-hijri_results = df['timestamp'].apply(get_hijri_info)
-df[['is_ramadan', 'is_eid', 'day_of_ramadan']] = pd.DataFrame(hijri_results.tolist(), index=df.index)
+    Returns
+    -------
+    DataFrame indexed identically to y with the columns above.
+    Early rows where the longest window doesn't fit are NaN.
+    """
+    out = pd.DataFrame(index=y.index)
+    out["y_lag_24h"] = y.shift(24)
+    out["y_lag_48h"] = y.shift(48)
+    out["y_lag_168h"] = y.shift(168)
+    out["y_lag_336h"] = y.shift(336)
 
-# CALENDAR & LAGS & ROLLING
-df['hour'] = df['timestamp'].dt.hour
-df['day_of_week'] = df['timestamp'].dt.dayofweek
-df['month'] = df['timestamp'].dt.month
+    # Anchor the rolling base at the issuance time (tau-24), then roll backward.
+    issuance = y.shift(24)
+    out["y_roll24_mean"] = issuance.rolling(window=24).mean()
+    out["y_roll24_std"] = issuance.rolling(window=24).std()
+    out["y_roll168_mean"] = issuance.rolling(window=168).mean()
+    out["y_roll168_std"] = issuance.rolling(window=168).std()
+    return out
 
-print("Calculating Lags and Rolling Windows")
-df['load_lag_24h'] = df['actual_load'].shift(24)
-df['load_lag_168h'] = df['actual_load'].shift(168)
 
-s = df['actual_load'].shift(1)
-df['load_rolling_mean_24h'] = s.rolling(window=24).mean()
-df['load_rolling_std_24h'] = s.rolling(window=24).std()
-df['load_rolling_mean_168h'] = s.rolling(window=168).mean()
-df['load_rolling_std_168h'] = s.rolling(window=168).std()
+def main() -> None:
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-# SLICE BUFFER AND SAVE
-df = df[df['timestamp'] >= '2018-01-01 00:00:00+00:00'].copy()
+    print("[1/4] Loading EPIAS load CSV ...")
+    df_main = pd.read_csv(
+        RAW_DIR / "electricity_consumption_2018_2025.csv"
+    ).rename(columns={"consumption": "actual_load"})
 
-df.to_csv(PROCESSED_DIR / "epias_processed_final.csv", index=False)
+    print("[2/4] Fetching 2017 buffer ...")
+    df_buf = _fetch_buffer_2017()
+
+    print("[3/4] Concatenating, aligning timestamps ...")
+    df = pd.concat([df_buf, df_main], ignore_index=True)
+    df["timestamp"] = pd.to_datetime(df["date"], utc=True)
+    df = (
+        df.drop(columns=[c for c in ("date", "time") if c in df.columns])
+          .sort_values("timestamp")
+          .set_index("timestamp")
+    )
+    df["actual_load"] = df["actual_load"].interpolate(method="linear")
+
+    print("[4/4] Building leak-free lag/rolling features ...")
+    feat = build_lag_rolling_features(df["actual_load"])
+    df = df.join(feat)
+
+    df = add_hijri_features(df)
+
+    df = df.loc[df.index >= "2018-01-01 00:00:00+00:00"].copy()
+
+    df.to_csv(OUTPUT_CSV)
+    print(f"[OK] wrote {OUTPUT_CSV} ({len(df):,} rows)")
+
+
+if __name__ == "__main__":
+    main()
