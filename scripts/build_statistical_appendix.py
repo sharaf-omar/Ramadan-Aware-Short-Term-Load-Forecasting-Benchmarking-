@@ -50,6 +50,10 @@ MODELS: list[tuple[str, str]] = [
     ("mstl_ets-hijri+res-h",      "mstl_ets__hijri__residual_h__seed0.parquet"),
     ("sarimax-hijri+res-h",       "sarimax__hijri__residual_h__seed0.parquet"),
     ("ensemble-top4-residual-median", "ensemble__top4_residual__seed0.parquet"),
+    # Tier-3 quick-win artifacts: meta-router + stacked LGBM.
+    ("meta-router",                   "meta_router__seed0.parquet"),
+    ("meta-router-v2",                "meta_router_v2__seed0.parquet"),
+    ("stacked-lgbm",                  "stacked_lgbm__seed0.parquet"),
 ]
 
 REGIMES = ["aggregate", "Normal", "Ramadan", "Heatwave"]

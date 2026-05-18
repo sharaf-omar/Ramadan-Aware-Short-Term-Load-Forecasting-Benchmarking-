@@ -20,17 +20,20 @@ artifact.
 
 ## TL;DR for the report
 
-1. **The new aggregate-MAE leader is an ensemble of residual-corrected
-   models** — the median of {Chronos+residual, LGBM-hijri+residual,
-   Time-MoE+residual, Moirai+residual} delivers MAE **872.4** [95% CI
-   783.9, 984.9], beating every single model by ≥9%. Among
-   single-model entries, **LightGBM-hijri + residual head** (940.4) is
+1. **The aggregate-MAE leader is a meta-router** — Normal τ routed to
+   an ensemble of residual-corrected top-4, Ramadan τ to LightGBM-hijri
+   (the regime specialist), Heatwave τ to a 4-way ensemble of
+   Chronos/Time-MoE bare+residual. Aggregate MAE **838.8** [95% CI
+   750.8, 948.7], **−13% vs the original Chronos-Bolt-Base headline of
+   968.9**. The simpler meta-router v1 (Chronos-bare alone for
+   Heatwave) lands at 840.9, and the pure 4-residual-ensemble at 872.4.
+2. **Among single models, LightGBM-hijri + residual head** (940.4) is
    the new leader, narrowly beating Chronos+residual (948.5) and
    LGBM-nohijri+residual (950.7).
-2. **A regime-routed best-of-models recipe is the production
-   recommendation when ensembling is too expensive:** route Heatwave
-   τ to Chronos-L720, Ramadan τ to LightGBM-hijri, Normal τ to
-   Chronos+residual. Aggregate MAE 916.0 with no ensembling overhead.
+3. **A regime-routed best-of-models recipe** is the no-ensemble
+   production option: route Heatwave to Chronos-L720, Ramadan to
+   LightGBM-hijri, Normal to Chronos+residual. Aggregate MAE 916.0
+   with single-model inference latency per regime.
 3. **LightGBM dominates Ramadan** (MAE 800), and the regime-routed
    recipe inherits that. Explicit Hijri feature engineering wins on
    this regime — the proposal's central hypothesis is confirmed.
@@ -68,12 +71,15 @@ shown; full 23-model table in the appendix.
 
 | Rank | Model | MAE [95% CI] | Notes |
 |---|---|---|---|
-| 1 | **ensemble-top4-residual-median** | **872.4** [783.9, 984.9] | Median of 4 residual-corrected models (Tier-2) |
-| 2 | ensemble-top4-median (mixed)   | 891.4 [798.6, 1009.8] | Tier-1 composite |
-| 3 | routed-best-per-regime         | 916.0 [824.2, 1036.9] | Tier-1 composite (single-model latency) |
-| 4 | lgbm-hijri+residual-h          | 940.4 [848.5, 1044.1] | Tier-2 (rescued incumbent) |
-| 5 | chronos-bolt-L720+residual-h   | 948.5 [846.9, 1072.4] | Plan 6 (regime-stratified) |
-| 6 | lgbm-nohijri+residual-h        | 950.7 [855.2, 1063.1] | Tier-2 |
+| 1 | **meta-router-v2**             | **838.8** [750.8, 948.7] | Tier-3 (ensemble Normal / LGBM Ramadan / Heatwave ensemble) |
+| 2 | meta-router                    | 840.9 [754.5, 953.0]    | Tier-3 (Chronos-bare for Heatwave) |
+| 3 | ensemble-top4-residual-median  | 872.4 [783.9, 984.9]    | Tier-2 (median of 4 residual-corrected) |
+| 4 | ensemble-top4-median (mixed)   | 891.4 [798.6, 1009.8] | Tier-1 |
+| 5 | stacked-lgbm                   | 891.0 [793.8, 1011.3]   | Tier-3 (regime-stratified) |
+| 6 | routed-best-per-regime         | 916.0 [824.2, 1036.9] | Tier-1 (single-model latency) |
+| 7 | lgbm-hijri+residual-h          | 940.4 [848.5, 1044.1] | Tier-2 (rescued incumbent) |
+| 8 | chronos-bolt-L720+residual-h   | 948.5 [846.9, 1072.4] | Plan 6 (regime-stratified) |
+| 9 | lgbm-nohijri+residual-h        | 950.7 [855.2, 1063.1] | Tier-2 |
 | 7 | time-moe-L720+residual-h       | 954.5 [851.7, 1079.0] | Plan 6 |
 | 8 | chronos-bolt-L720              | 968.9 [868.8, 1097.9] | Bare TSFM (Plan 3) |
 | 9 | lgbm-hijri (seed 44)           | 979.0 [890.2, 1079.9] | Tuned tabular (Plan 1) |

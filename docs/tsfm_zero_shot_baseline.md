@@ -33,7 +33,9 @@ C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariate
 
 | Model                       | MAE    | RMSE   |
 |-----------------------------|--------|--------|
-| **Ensemble (median of top 4 residual-corrected)** | **872.4** | — |
+| **Meta-router v2** (ensemble Normal / LGBM Ramadan / Heatwave ensemble) | **838.8** | — |
+| Meta-router (ensemble Normal / LGBM Ramadan / Chronos Heatwave) | 840.9 | — |
+| Ensemble (median of top 4 residual-corrected) | 872.4 | — |
 | Ensemble (median of top 4 bare/mixed) | 891.4 | — |
 | Routed best-per-regime      | 916.0  | — |
 | LightGBM (hijri) + residual-h | 940.4  | — |
@@ -58,16 +60,19 @@ C, full L × model grid), [`docs/tsfm_hijri_covariates.md`](tsfm_hijri_covariate
 Detail on post-hoc residual correction (the `+ residual-h` rows): [`residual_correction.md`](residual_correction.md).
 Detail on the ensemble and regime-routing recipes: [`capstone_synthesis.md`](capstone_synthesis.md) §10.
 
-**Headline (updated):** A median **ensemble of four residual-corrected
-models** (Chronos+residual, LGBM-hijri+residual, Time-MoE+residual,
-Moirai+residual) delivers aggregate MAE **872.4** [95% CI 783.9,
-984.9], beating every single model by ≥9%. The mixed-bare-and-residual
-ensemble is right behind at 891.4. Among single models, **LightGBM-hijri
-+ residual head** (940.4) is the new leader — post-hoc residual
-correction rescues even the tuned tabular incumbent. The original
-single-model finding still stands as the strongest result that requires
-no second-stage modeling: Chronos-Bolt-Base at L=720 (968.9) narrowly
-beats LightGBM-hijri (979.0) zero-shot.
+**Headline (updated):** The current champion is **meta-router-v2** at
+aggregate MAE **838.8** [95% CI 750.8, 948.7], **−13% vs the original
+single-model champion Chronos-Bolt-Base L=720 (968.9).** Meta-router-v2
+uses the ensemble-of-residual-corrected-models for Normal hours
+(MAE 775), LightGBM-hijri for Ramadan (MAE 800), and an ensemble of
+Chronos/Time-MoE bare+residual for Heatwave (MAE 1206). Behind it,
+the simpler meta-router v1 lands at 840.9 (Chronos-bare alone for
+Heatwave), and the all-regime residual-corrected ensemble at 872.4.
+Among single models, **LightGBM-hijri + residual head** (940.4) is the
+new leader — post-hoc residual correction rescues even the tuned
+tabular incumbent. The original zero-shot single-model finding still
+stands: Chronos-Bolt-Base L=720 (968.9) narrowly beats LightGBM-hijri
+(979.0) bare-vs-bare.
 
 ## Per-regime MAE
 
