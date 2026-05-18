@@ -70,3 +70,86 @@ def test_tsfm_hijri_prediction_exists(model_name):
     assert "y_pred" in df.columns
     assert df["y_pred"].notna().all()
     assert len(df) > 5000
+
+
+# Plan 4: classical baselines.
+CLASSICAL_RUNS = [
+    ("mstl_ets", "nohijri"),
+    ("mstl_ets", "hijri"),
+    ("sarimax",  "nohijri"),
+    ("sarimax",  "hijri"),
+    ("sarimax",  "hijri_plusB"),
+]
+
+
+@pytest.mark.parametrize("model_name,variant", CLASSICAL_RUNS)
+def test_classical_prediction_exists(model_name, variant):
+    p = PRED_DIR / f"{model_name}__{variant}__seed0.parquet"
+    assert p.exists(), (
+        f"Missing {p}. Re-run "
+        f"scripts/run_classical.py --model {model_name} --variant {variant}."
+    )
+    df = pd.read_parquet(p)
+    assert "y_true" in df.columns
+    assert "y_pred" in df.columns
+    assert "regime" in df.columns
+    assert df["y_pred"].notna().all()
+    assert len(df) > 5000
+
+
+# Plan 7 sub-task: statistical appendix.
+STATS_DIR = ROOT / "data" / "statistical_appendix"
+STATS_DOC = ROOT / "docs" / "statistical_appendix.md"
+STATS_CSVS = [
+    "ci_table.csv",
+    "dm_aggregate.csv",
+    "dm_Normal.csv",
+    "dm_Ramadan.csv",
+    "dm_Heatwave.csv",
+]
+
+
+def test_statistical_appendix_doc_exists():
+    assert STATS_DOC.exists(), (
+        f"Missing {STATS_DOC}. Re-run scripts/build_statistical_appendix.py."
+    )
+    txt = STATS_DOC.read_text(encoding="utf-8")
+    assert "# Statistical Appendix" in txt
+    assert "## Bootstrap MAE confidence intervals" in txt
+    assert "## Pairwise Diebold-Mariano tests" in txt
+
+
+@pytest.mark.parametrize("name", STATS_CSVS)
+def test_statistical_appendix_csv_exists(name):
+    p = STATS_DIR / name
+    assert p.exists(), (
+        f"Missing {p}. Re-run scripts/build_statistical_appendix.py."
+    )
+    df = pd.read_csv(p)
+    assert len(df) > 0
+
+
+# Plan 6: post-hoc LightGBM residual heads on the 4 TSFMs.
+RESIDUAL_RUNS = [
+    ("chronos_bolt_base", 720),
+    ("moirai_1_1_small", 336),
+    ("timesfm_2_5",       168),
+    ("time_moe_200m",     720),
+]
+
+
+@pytest.mark.parametrize("tsfm_name,L", RESIDUAL_RUNS)
+@pytest.mark.parametrize("variant", ["nohijri", "hijri"])
+def test_residual_prediction_exists(tsfm_name, L, variant):
+    p = PRED_DIR / f"{tsfm_name}__residual__{variant}__L{L}__seed0.parquet"
+    assert p.exists(), (
+        f"Missing {p}. Re-run "
+        f"scripts/run_residual.py --tsfm-parquet "
+        f"{tsfm_name}__nohijri__L{L}__seed0.parquet "
+        f"--tsfm-name {tsfm_name} --context-length {L} "
+        f"--variant {variant} --seed 0."
+    )
+    df = pd.read_parquet(p)
+    assert {"y_true", "y_pred", "regime"} <= set(df.columns)
+    assert df["y_pred"].notna().all()
+    assert len(df) > 5000
